@@ -275,6 +275,12 @@ svg.chart rect.st:hover{opacity:.8}
 .gfx-legend span{display:inline-flex;align-items:center;gap:6px}
 .gfx-legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
 .gfx-note{font-size:13px;color:var(--muted);margin:10px 0 0}
+.kpi small.dl{font-weight:700;color:var(--muted)}
+.kpi small.dl.up{color:var(--g4)}
+.kpi small.dl.down{color:var(--brick)}
+.gbtn-sm{border:1.5px solid var(--line-strong);background:var(--surface);color:var(--ink);font-weight:700;padding:6px 12px;border-radius:99px;cursor:pointer;font-size:13px}
+.gbtn-sm[hidden]{display:none}
+.gbtn-sm:hover{border-color:var(--ink)}
 </style>
 </head>
 <body>
@@ -1481,7 +1487,7 @@ function legendHTML(items,fmt){
 function hChart(el,items,fmt,opt={}){
   if(!items.length){el.innerHTML='<div class="empty">Aucune donnée sur la période.</div>';return}
   const w=Math.max(300,el.clientWidth||600),rowH=30,lw=Math.min(Math.round(w*.5),340),vw=84,bw=Math.max(40,w-lw-vw-10),h=items.length*rowH+4;
-  const mx=Math.max(...items.map(x=>x.v),1),maxCh=Math.floor((lw-26)/6.6);
+  const mx=opt.max||Math.max(...items.map(x=>x.v),1),maxCh=Math.floor((lw-26)/6.6);
   const cut=s=>s.length>maxCh?s.slice(0,maxCh-1)+'…':s;
   let s=`<svg class="hchart${opt.mag?' mag':''}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(opt.aria||'Classement')}">`;
   items.forEach((x,k)=>{const y=k*rowH+4,bl=Math.max(2,bw*x.v/mx);
@@ -1507,18 +1513,105 @@ function stackChart(el,keys,series,opt={}){
 function segBtns(name,cur){
   return `<div class="seg" role="group" aria-label="Indicateur" data-g="${name}"><button data-v="cmd" aria-pressed="${cur==='cmd'}">Commandes</button><button data-v="ca" aria-pressed="${cur==='ca'}">CA HT</button></div>`;
 }
+/* ----- indicateurs complémentaires ----- */
+const hasNet=()=>!!(D.network&&D.network.length&&D.agnet);
+const hasCat=()=>!!(D.catalogue&&D.catalogue.length);
+let FIRSTA=null;
+function firstOrders(){ /* première commande de chaque agence, sur tout l'historique */
+  const m=new Map();for(const o of D.orders){const f=m.get(o.a);if(!f||o.d<f.d)m.set(o.a,o)}
+  FIRSTA=new Map([...m].map(([a,o])=>[a,o.n]));
+}
+/* période de comparaison : année précédente (même période si l'année est en cours), ou 12 derniers mois en vue « toute la période » */
+function cmpPeriod(){
+  if(S.year==='all'&&S.month==='all'){
+    const l1=SLEEP_LIMIT,l2=new Date(refT-730*864e5).toISOString().slice(0,10);
+    if(FIRST.slice(0,10)>l2)return {rolling:true,cur:D.orders.filter(o=>o.d>l1),prev:null};
+    return {rolling:true,cur:D.orders.filter(o=>o.d>l1),prev:D.orders.filter(o=>o.d>l2&&o.d<=l1),vs:'vs les 12 mois précédents'};
+  }
+  if(S.year==='all')return null;
+  const y=+S.year,py=y-1,mo=S.month==='all'?1:+S.month;
+  if(FIRST.slice(0,10)>py+'-'+String(mo).padStart(2,'0')+'-01')return {cur:F(),prev:null};
+  const cur=y===+LAST.slice(0,4)&&(S.month==='all'||mo===+LAST.slice(5,7))?LAST.slice(5,10):null;
+  const prev=D.orders.filter(o=>o.y===py&&(S.month==='all'||o.m===mo)&&(!cur||o.d.slice(5,10)<=cur));
+  return {cur:F(),prev,vs:cur?'vs même période '+py:'vs '+(S.month==='all'?'':MOISL[mo-1].toLowerCase()+' ')+py};
+}
+function kpiVals(ords){
+  if(!ords.length)return null;
+  const A=agAgg(ords),ca=ords.reduce((s,o)=>s+o.t,0),ns=new Set(ords.map(o=>o.n));
+  const gaps=[];A.forEach(a=>{const ds=a.orders.map(o=>o.d).sort();for(let i=1;i<ds.length;i++)gaps.push((new Date(ds[i].slice(0,10))-new Date(ds[i-1].slice(0,10)))/864e5)});
+  const byCa=A.map(a=>a.ca).sort((x,y)=>y-x),k=Math.max(1,Math.ceil(A.length*.2));
+  const v={cmd:ords.length,ca,basket:ca/ords.length,ag:A.length,
+    newAg:A.filter(a=>ns.has(FIRSTA.get(a.i))).length,
+    gap:median(gaps),ppo:ords.reduce((s,o)=>s+new Set(o.i.map(x=>x[0])).size,0)/ords.length,
+    top20:byCa.slice(0,k).reduce((s,x)=>s+x,0)/(ca||1),A};
+  if(hasNet()){const seen=new Set();A.forEach(a=>{const r=D.agnet[a.i];if(r&&r[0]>=0)seen.add(r[0])});v.pen=seen.size/D.network.length;v.penN=seen.size}
+  return v;
+}
+const KDEF=[
+  {k:'cmd',l:'commandes',f:v=>nf.format(v)},
+  {k:'ca',l:'CA HT produits',f:v=>eur.format(v)},
+  {k:'basket',l:'panier moyen HT',f:v=>eur.format(v)},
+  {k:'ag',l:'agences clientes',f:v=>nf.format(v)},
+  {k:'pen',l:'des agences de l\'annuaire ont commandé',f:v=>pct(v),pts:true,net:true},
+  {k:'newAg',l:'nouvelles agences',f:v=>nf.format(v),tip:'Agences dont la toute première commande a eu lieu sur la période.'},
+  {k:'gap',l:'délai médian entre 2 commandes d\'une agence',f:v=>v==null?'–':nf.format(Math.round(v))+' j',inv:true},
+  {k:'ppo',l:'produits différents par commande',f:v=>nf1.format(v)},
+  {k:'top20',l:'du CA fait par les 20 % meilleures agences',f:v=>pct(v),pts:true,neutral:true}
+];
+function deltaHTML(d,a,b,vs){
+  if(a==null||b==null||(!d.pts&&!b))return '';
+  const diff=d.pts?(a-b)*100:(a-b)/b*100;if(!isFinite(diff))return '';
+  const up=diff>0,good=d.neutral?0:(d.inv?!up:up)?1:-1,txt=(up?'+':'')+nf1.format(diff)+(d.pts?' pt':' %');
+  return `<small class="dl ${Math.abs(diff)<.05?'':good>0?'up':good<0?'down':''}">${Math.abs(diff)<.05?'=':up?'▲':'▼'} ${txt} ${esc(vs)}</small>`;
+}
+function csvDownload(name,rows){
+  const txt='﻿'+rows.map(r=>r.map(c=>{c=String(c??'');return /[;"\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(';')).join('\n');
+  try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/csv;charset=utf-8'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}catch(e){alert('Le téléchargement n\'est pas disponible ici.')}
+}
+/* courbe de concentration */
+function paretoSVG(el,A){
+  const w=Math.max(280,el.clientWidth||500),h=230,pl=44,pr=22,pt=10,pb=30,iw=w-pl-pr,ih=h-pt-pb;
+  const v=A.map(a=>a.ca).sort((x,y)=>y-x),tot=v.reduce((s,x)=>s+x,0)||1,n=v.length;
+  let acc=0;const pts=[[0,0]];v.forEach((x,i)=>{acc+=x;pts.push([(i+1)/n,acc/tot])});
+  const X=x=>pl+x*iw,Y=y=>pt+ih-y*ih;
+  const step=Math.max(1,Math.floor(pts.length/300)),line=pts.filter((_,i)=>i%step===0||i===pts.length-1).map(p=>X(p[0]).toFixed(1)+','+Y(p[1]).toFixed(1)).join(' ');
+  const k=Math.max(1,Math.ceil(n*.2)),y20=pts[k][1];
+  let s=`<svg class="chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Courbe de concentration du CA">`;
+  for(let i=0;i<=4;i++){const y=Y(i/4);s+=`<line class="grid" x1="${pl}" x2="${w-pr}" y1="${y}" y2="${y}"/><text x="${pl-6}" y="${y+4}" text-anchor="end">${i*25} %</text><text x="${X(i/4)}" y="${h-10}" text-anchor="middle">${i*25} %</text>`}
+  s+=`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(1)}" y2="${Y(1)}" stroke="var(--line-strong)" stroke-dasharray="4 4"/>`;
+  s+=`<polyline points="${line}" fill="none" stroke="var(--g1)" stroke-width="2.5"/>`;
+  s+=`<line x1="${X(k/n)}" y1="${Y(0)}" x2="${X(k/n)}" y2="${Y(y20)}" stroke="var(--g2)" stroke-dasharray="3 3"/><circle cx="${X(k/n)}" cy="${Y(y20)}" r="5" fill="var(--g2)"><title>Les 20 % meilleures agences (${k}) font ${pct(y20)} du CA</title></circle>`;
+  s+=`<text x="${X(k/n)+8}" y="${Y(y20)+14}" style="fill:var(--ink);font-weight:700">${pct(y20)} du CA</text>`;
+  el.innerHTML=s+'</svg>';
+}
+const CODEGRP=[['none','Sans code'],['promo','Code promo'],['fid','Points fidélité'],['sav','Geste commercial']];
+
 function renderGraphiques(){
   const el=document.getElementById('p-graphiques'),ords=F();
   if(!ords.length){el.innerHTML='<div class="empty">Aucune commande sur cette période. Choisissez une autre année ou un autre mois.</div>';return}
+  if(!FIRSTA)firstOrders();
   const ca=ords.reduce((s,o)=>s+o.t,0),A=agAgg(ords);
+  const C=cmpPeriod(),K=kpiVals(ords);
+  const KC=C&&C.rolling?kpiVals(C.cur):null,KP=C&&C.prev&&C.prev.length?kpiVals(C.prev):null;
+  const cards=KDEF.filter(d=>!d.net||hasNet()).map(d=>{
+    let extra='';
+    if(C&&C.rolling){if(KC)extra=`<small>12 derniers mois : ${d.f(KC[d.k])}</small>`+(KP?deltaHTML(d,KC[d.k],KP[d.k],C.vs):'')}
+    else if(KP)extra=deltaHTML(d,K[d.k],KP[d.k],C.vs);
+    if(d.k==='pen')extra=`<small>${nf.format(K.penN)} sur ${nf.format(D.network.length)} agences</small>`+extra;
+    return `<div class="kpi"${d.tip?` title="${esc(d.tip)}"`:''}><b>${d.f(K[d.k])}</b><span>${d.l}</span>${extra}</div>`}).join('');
+  /* catalogue en ligne vendu sur les 12 derniers mois */
+  let catCard='';
+  if(hasCat()){const sold=new Set();D.orders.forEach(o=>{if(o.d>SLEEP_LIMIT)o.i.forEach(([p])=>{const c=D.products[p][3];if(c>=0)sold.add(c)})});
+    const on=D.catalogue.map((c,k)=>({k,grp:c[2]||'Sans groupe',st:c[3]})).filter(c=>c.st==='En ligne'),ns=on.filter(c=>sold.has(c.k)).length;
+    catCard=`<div class="kpi" title="Indicateur calculé sur les 12 derniers mois de données, quel que soit le filtre."><b>${pct(ns/(on.length||1))}</b><span>du catalogue en ligne vendu sur 12 mois</span><small>${nf.format(ns)} produits sur ${nf.format(on.length)}</small></div>`;}
+  const cmpNote=!C?'Pour voir l\'évolution, choisissez une année (sans mois, ou avec un mois).':
+    C.rolling?(C.prev?'Sous chaque chiffre : les 12 derniers mois et leur évolution par rapport aux 12 mois précédents.':'Sous chaque chiffre : les 12 derniers mois (historique trop court pour comparer avec l\'année précédente).'):
+    !C.prev?'Pas de comparaison possible : l\'année précédente n\'est pas couverte en entier par les données.':
+    'Sous chaque chiffre : l\'évolution '+C.vs.replace(/^vs /,'par rapport à ')+'. En vert ce qui progresse, en rose ce qui recule.';
   el.innerHTML=`
   <div class="gfx-intro"><div><h2>Graphiques</h2><p class="lead">${periodLabel()}. Une vue simplifiée des résultats : ce qui se vend, qui commande et comment se répartissent les commandes. Montants HT, produits uniquement, avant remise. Survolez un élément pour voir le détail.</p></div></div>
-  <div class="kpis">
-    <div class="kpi"><b>${nf.format(ords.length)}</b><span>commandes</span></div>
-    <div class="kpi"><b>${eur.format(ca)}</b><span>CA HT produits</span></div>
-    <div class="kpi"><b>${eur.format(ca/ords.length)}</b><span>panier moyen HT</span></div>
-    <div class="kpi"><b>${nf.format(A.length)}</b><span>agences clientes</span></div>
-  </div>
+  <div class="kpis">${cards}${catCard}</div>
+  <p class="gfx-note" style="margin:-16px 0 22px">${cmpNote}</p>
   <div class="grid2">
     <div class="box"><div class="box-head"><h3 id="gCatT"></h3>${segBtns('cat',gfxState.cat)}</div><div class="donut-wrap" id="gCat"></div>
       <p class="gfx-note" id="gCatN"></p></div>
@@ -1529,7 +1622,77 @@ function renderGraphiques(){
     <div class="box"><div class="box-head"><h3 id="gProdT"></h3>${segBtns('prod',gfxState.prod)}</div><div class="chart-wrap" id="gProd"></div></div>
     <div class="box"><div class="box-head"><h3 id="gAgT"></h3>${segBtns('ag',gfxState.ag)}</div><div class="chart-wrap" id="gAg"></div></div>
   </div>
-  <div class="box"><div class="box-head"><h3 id="gMoisT"></h3></div><div class="chart-wrap" id="gMois"></div><div class="gfx-legend" id="gMoisL"></div></div>`;
+  <div class="box"><div class="box-head"><h3 id="gMoisT"></h3></div><div class="chart-wrap" id="gMois"></div><div class="gfx-legend" id="gMoisL"></div></div>
+  <div class="box"><div class="box-head"><h3>Agences gagnées et perdues</h3><button class="gbtn-sm" id="gLostCsv" hidden>Télécharger la liste à relancer (CSV)</button></div><div id="gWin"></div></div>
+  <div class="grid2">
+    <div class="box"><div class="box-head"><h3>Saisonnalité : commandes moyennes par mois</h3></div><div class="chart-wrap" id="gSai"></div><p class="gfx-note" id="gSaiN"></p></div>
+    <div class="box"><div class="box-head"><h3>Concentration du chiffre d'affaires</h3></div><div class="chart-wrap" id="gPar"></div><p class="gfx-note" id="gParN"></p></div>
+  </div>
+  <div class="box"><div class="box-head"><h3>Produits souvent achetés ensemble</h3></div><div id="gPairs"></div></div>
+  <div class="grid2">
+    <div class="box"><div class="box-head"><h3>Efficacité des codes promo</h3></div><div id="gCodes"></div></div>
+    ${hasCat()?'<div class="box"><div class="box-head"><h3>Part du catalogue en ligne vendue, par groupe</h3></div><div class="chart-wrap" id="gCatV"></div><p class="gfx-note">Sur les 12 derniers mois de données, quel que soit le filtre. Les groupes les moins vendus sont en haut : ce sont les pistes pour faire le ménage dans le catalogue.</p></div>':''}
+  </div>`;
+
+  const drawWin=()=>{
+    const box=document.getElementById('gWin'),btn=document.getElementById('gLostCsv');
+    if(!C||!C.prev){box.innerHTML='<div class="empty">'+esc(!C?'Choisissez une année pour comparer avec l\'année précédente.':'Historique trop court pour comparer avec la période précédente.')+'</div>';btn.hidden=true;return}
+    const cur=new Set(C.cur.map(o=>o.a)),Ap=agAgg(C.prev),lost=Ap.filter(a=>!cur.has(a.i)).sort((x,y)=>y.ca-x.ca);
+    const ns=new Set(C.cur.map(o=>o.n)),won=agAgg(C.cur).filter(a=>ns.has(FIRSTA.get(a.i))).length;
+    const kept=Ap.length-lost.length,lbl=C.rolling?'les 12 derniers mois':'la période';
+    box.innerHTML=`<div class="kpis" style="margin-bottom:16px">
+      <div class="kpi"><b style="color:var(--g4)">+${nf.format(won)}</b><span>nouvelles agences sur ${lbl}</span></div>
+      <div class="kpi"><b>${nf.format(kept)}</b><span>agences fidèles</span><small>clientes sur les deux périodes</small></div>
+      <div class="kpi"><b style="color:var(--brick)">−${nf.format(lost.length)}</b><span>agences perdues</span><small>clientes ${esc(C.vs.replace(/^vs /,'sur '))}, pas depuis</small></div>
+      <div class="kpi"><b>${pct(kept/(Ap.length||1))}</b><span>taux de rétention</span></div></div>`+
+      (lost.length?`<p class="gfx-note" style="margin:0 0 8px">Les agences perdues qui pesaient le plus (${Math.min(15,lost.length)} sur ${nf.format(lost.length)}) — à relancer en priorité :</p><div class="tw"><table class="subtable"><thead><tr><th>Agence</th><th>Ville</th><th class="n">Commandes</th><th class="n">CA HT</th><th>Dernière commande</th></tr></thead><tbody>`+
+      lost.slice(0,15).map(a=>`<tr><td>${esc(a.name)}</td><td class="muted">${esc(a.city||'')}</td><td class="n">${nf.format(a.cmd)}</td><td class="n">${eur.format(a.ca)}</td><td>${fd(PALLAG(a.i))}</td></tr>`).join('')+'</tbody></table></div>':'');
+    btn.hidden=!lost.length;
+    btn.onclick=()=>csvDownload('agences-a-relancer.csv',[['Agence','Ville','Commandes période précédente','CA HT période précédente','Dernière commande'],...lost.map(a=>[a.name,a.city||'',a.cmd,a.ca.toFixed(2).replace('.',','),fd(PALLAG(a.i))])]);
+  };
+  const lastAg=new Map();D.orders.forEach(o=>{const l=lastAg.get(o.a);if(!l||o.d>l)lastAg.set(o.a,o.d)});
+  const PALLAG=a=>lastAg.get(a);
+  const drawSai=()=>{
+    const cnt=new Map();D.orders.forEach(o=>cnt.set(o.ym,(cnt.get(o.ym)||0)+1));
+    const f=FIRST.slice(0,7),l=LAST.slice(0,7),sum=Array(12).fill(0),nb=Array(12).fill(0);
+    let [y,m]=[+f.slice(0,4),+f.slice(5,7)];
+    while(true){const k=y+'-'+String(m).padStart(2,'0');if(k>l)break;if(k!==f&&k!==l){sum[m-1]+=cnt.get(k)||0;nb[m-1]++}m++;if(m>12){m=1;y++}}
+    const avg=sum.map((s,i)=>nb[i]?s/nb[i]:0),top=avg.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]).slice(0,3).map(x=>x[1]);
+    barChart(document.getElementById('gSai'),MOIS,avg,v=>nf1.format(v)+' commandes en moyenne',{h:220,aria:'Commandes moyennes par mois de l\'année',hl:i=>top.includes(i)});
+    document.getElementById('gSaiN').textContent='Moyenne sur tout l\'historique (mois complets uniquement), quel que soit le filtre. Mois les plus forts, en jaune : '+top.map(i=>MOISL[i].toLowerCase()).join(', ')+'. Le bon moment pour lancer les campagnes est juste avant.';
+  };
+  const drawPar=()=>{
+    paretoSVG(document.getElementById('gPar'),A);
+    const s=A.map(a=>a.ca).sort((x,y)=>y-x),tot=s.reduce((t,x)=>t+x,0)||1;let acc=0,n50=0;for(const x of s){acc+=x;n50++;if(acc>=tot/2)break}
+    document.getElementById('gParN').textContent=`Lecture : les agences sont classées de la plus grosse à la plus petite. ${nf.format(n50)} agences sur ${nf.format(A.length)} (${pct(n50/A.length)}) font la moitié du CA. Plus la courbe monte vite, plus le CA dépend de quelques agences.`;
+  };
+  const drawPairs=()=>{
+    const pc=new Map(),pairs=new Map();let multi=0;
+    ords.forEach(o=>{const u=[...new Set(o.i.map(x=>x[0]))].sort((a,b)=>a-b);u.forEach(p=>pc.set(p,(pc.get(p)||0)+1));if(u.length>1)multi++;
+      if(u.length>12)return;for(let i=0;i<u.length;i++)for(let j=i+1;j<u.length;j++){const k=u[i]+'|'+u[j];pairs.set(k,(pairs.get(k)||0)+1)}});
+    const top=[...pairs].filter(([,n])=>n>=3).sort((a,b)=>b[1]-a[1]).slice(0,12);
+    const head=`<p class="gfx-note" style="margin:0 0 10px">${nf.format(multi)} commandes sur ${nf.format(ords.length)} (${pct(multi/ords.length)}) contiennent plusieurs produits différents, en moyenne ${nf1.format(K.ppo)} produits par commande.</p>`;
+    if(!top.length){document.getElementById('gPairs').innerHTML=head+'<div class="empty">Pas assez de commandes communes sur la période (au moins 3 commandes par paire).</div>';return}
+    document.getElementById('gPairs').innerHTML=head+`<div class="tw"><table class="subtable"><thead><tr><th>Produit</th><th>souvent pris avec</th><th class="n">Commandes communes</th><th>Lecture</th></tr></thead><tbody>`+
+      top.map(([k,n])=>{let [a,b]=k.split('|').map(Number);if(pc.get(a)>pc.get(b))[a,b]=[b,a];
+        return `<tr><td>${esc(D.products[a][0])}</td><td>${esc(D.products[b][0])}</td><td class="n">${nf.format(n)}</td><td class="muted">${pct(n/pc.get(a))} des commandes du 1<sup>er</sup> contiennent aussi le 2<sup>nd</sup></td></tr>`}).join('')+'</tbody></table></div><p class="gfx-note">Idées de packs ou de suggestions « souvent achetés ensemble » sur le site.</p>';
+  };
+  const drawCodes=()=>{
+    const g=new Map(CODEGRP.map(([k,l])=>[k,{l,cmd:0,ca:0,rem:0}]));
+    ords.forEach(o=>{const types=new Set(o.c.map(c=>codeType(c[0])));const k=!types.size?'none':types.has('promo')?'promo':types.has('fid')?'fid':'sav';const r=g.get(k);r.cmd++;r.ca+=o.t;r.rem+=o.r});
+    const rows=[...g.values()].filter(r=>r.cmd),base=g.get('none');
+    const mx=Math.max(...rows.map(r=>r.ca/r.cmd),1);
+    document.getElementById('gCodes').innerHTML=`<div class="tw"><table class="subtable"><thead><tr><th></th><th class="n">Commandes</th><th>Panier moyen HT</th><th class="n">Remise moyenne</th></tr></thead><tbody>`+
+      rows.map(r=>{const b=r.ca/r.cmd;return `<tr><td><b>${esc(r.l)}</b></td><td class="n">${nf.format(r.cmd)} <span class="muted">(${pct(r.cmd/ords.length)})</span></td><td style="min-width:150px"><div style="display:flex;align-items:center;gap:8px"><span style="flex:1;height:8px;background:var(--line);border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${(b/mx*100).toFixed(1)}%;background:${r===base?'var(--g8)':'var(--g1)'}"></i></span><b>${eur.format(b)}</b></div></td><td class="n">${r.rem/r.cmd>=.5?eur2.format(r.rem/r.cmd):'–'}</td></tr>`}).join('')+'</tbody></table></div>'+
+      (base.cmd&&g.get('promo').cmd?`<p class="gfx-note">Avec un code promo, le panier moyen est ${(()=>{const d=(g.get('promo').ca/g.get('promo').cmd)/(base.ca/base.cmd)-1;return (d>=0?'supérieur':'inférieur')+' de '+pct(Math.abs(d))})()} à celui des commandes sans code. Les remises coûtent ${pct(ords.reduce((s,o)=>s+o.r,0)/(ca||1))} du CA HT. Attention : un écart ne prouve pas à lui seul que le code fait acheter plus.</p>`:'');
+  };
+  const drawCatV=()=>{
+    if(!hasCat())return;
+    const sold=new Set();D.orders.forEach(o=>{if(o.d>SLEEP_LIMIT)o.i.forEach(([p])=>{const c=D.products[p][3];if(c>=0)sold.add(c)})});
+    const m=new Map();D.catalogue.forEach((c,k)=>{if(c[3]!=='En ligne')return;const g=c[2]||'Sans groupe';const r=m.get(g)||{n:0,s:0};r.n++;if(sold.has(k))r.s++;m.set(g,r)});
+    const items=[...m].filter(([,r])=>r.n>=2).map(([g,r])=>({l:g+' ('+r.s+'/'+r.n+')',v:r.s/r.n})).sort((a,b)=>a.v-b.v).slice(0,12);
+    hChart(document.getElementById('gCatV'),items,v=>pct(v),{aria:'Part du catalogue vendue par groupe',max:1});
+  };
 
   const isCA=k=>gfxState[k]==='ca',fmtOf=k=>isCA(k)?v=>eur.format(v):v=>nf.format(v);
   const CA_ITEMS=catAgg(ords);
@@ -1572,7 +1735,7 @@ function renderGraphiques(){
   const D2={cat:drawCat,prod:drawProd,ag:drawAg};
   el.querySelectorAll('.seg[data-g]').forEach(g=>g.querySelectorAll('button').forEach(b=>b.onclick=()=>{
     gfxState[g.dataset.g]=b.dataset.v;g.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));D2[g.dataset.g]()}));
-  const all=()=>{drawCat();drawFid();drawProd();drawAg();drawMois()};
+  const all=()=>{drawCat();drawFid();drawProd();drawAg();drawMois();drawWin();drawSai();drawPar();drawPairs();drawCodes();drawCatV()};
   all();el._redraw=all;
 }
 
