@@ -276,9 +276,10 @@ firebase.initializeApp(firebaseConfig);const fs=firebase.firestore();
   try{
     const d=await fs.collection(prefix+'_client').doc(key).get();
     if(!d.exists){show('<h1>Lien inconnu</h1><p>Ce lien n\'est plus valide. Demandez le nouveau lien à votre contact Smartshop.</p>');return}
-    const data=d.data();let json=data.json;
-    if(data.parts){json='';for(let k=0;k<data.parts;k++){const p=await fs.collection(prefix+'_client').doc(key+'_'+k).get();if(!p.exists)throw new Error('incomplet');json+=p.data().json}}
-    const snap=JSON.parse(json);start(snap,snap.goalCa||0);
+    let obj=JSON.parse(d.data().json);
+    if(obj.parts){let json='';for(let k=0;k<obj.parts;k++){const p=await fs.collection(prefix+'_client').doc(key+'_'+k).get();if(!p.exists)throw new Error('incomplet');json+=JSON.parse(p.data().json).chunk}obj=JSON.parse(json)}
+    if(!obj.orders||!obj.generated)throw new Error('format inattendu : republiez depuis l\'outil');
+    start(obj,obj.goalCa||0);
   }catch(e){show('<h1>Tableau de bord</h1><p class="gerr">Les données n\'ont pas pu être lues ('+esc(e.code||e.message||'erreur')+'). Actualisez la page ou contactez Smartshop.</p>')}
 })();
 })();

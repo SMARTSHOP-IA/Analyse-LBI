@@ -2526,8 +2526,9 @@ async function publishClient(silent){
   if(!UPD.db||!SETTINGS.clientKey)return false;
   const json=JSON.stringify(clientSnapshot()),PART=900000,key=SETTINGS.clientKey;
   try{
-    if(json.length<=PART)await UPD.db.doc('client/'+key).set({json});
-    else{const n=Math.ceil(json.length/PART);for(let k=0;k<n;k++)await UPD.db.doc('client/'+key+'_'+k).set({json:json.slice(k*PART,(k+1)*PART)});await UPD.db.doc('client/'+key).set({parts:n})}
+    /* la couche d'accès enregistre l'objet tel quel (champ json) : on écrit l'instantané directement, ou en morceaux s'il est volumineux */
+    if(json.length<=PART)await UPD.db.doc('client/'+key).set(clientSnapshot());
+    else{const n=Math.ceil(json.length/PART);for(let k=0;k<n;k++)await UPD.db.doc('client/'+key+'_'+k).set({chunk:json.slice(k*PART,(k+1)*PART)});await UPD.db.doc('client/'+key).set({parts:n})}
     SETTINGS.clientPublished=today();try{await saveDoc('settings',SETTINGS)}catch(e){}
     if(!silent)toast('Tableau de bord client publié.');return true;
   }catch(e){console.warn(e);if(!silent)toast('Publication impossible : '+(e.message||e.code)+'. Vérifiez les règles Firestore (collection « '+PREFIX_ID+'_client »).',true);return false}
