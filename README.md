@@ -22,6 +22,16 @@ assistant qui répond en français à partir des données (meilleure agence, pro
 département le plus actif, CA d'une période, codes promo, comparaison de deux années…). Les editors définissent les objectifs et le taux de
 commission depuis « Mettre à jour les données » (commission Interkab : 9 % du CA HT après remises, hors frais de port).
 
+## Export client (lien privé)
+
+La section **Export client** de l'outil publie un tableau de bord simplifié pour le réseau
+(CA, commandes, paniers, tops agences et produits, répartition par gamme, évolution mensuelle),
+lisible sans compte à l'adresse `client/index.html?c=interkab&k=<clé>`. La clé est générée par un
+editor dans l'outil (« Créer le lien client ») et peut être régénérée pour couper l'accès. Le tableau
+est republié automatiquement à chaque import de données. Les données sont stockées dans la collection
+`interkab_client` : ajoutez le contenu de `regles-firestore-client.txt` aux règles Firestore
+(avant les deux dernières accolades), sinon la publication échoue.
+
 ## Vue groupe
 
 `groupe/index.html` consolide tous les réseaux clients (même connexion Google, mêmes droits).

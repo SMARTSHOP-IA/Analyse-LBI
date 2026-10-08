@@ -1,0 +1,6 @@
+    // Tableau de bord client Interkab : lecture par lien privé (identifiant secret), jamais de liste.
+    match /interkab_client/{doc} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isAuthorized() && getRole() == 'editor';
+    }
