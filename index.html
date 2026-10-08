@@ -244,6 +244,37 @@ svg.chart rect.hl{fill:var(--sign)}
 .minibar i{display:block;height:100%;background:var(--teal)}
 @media (max-width:640px){.top-inner,main{padding-left:14px;padding-right:14px}.kpi{padding:12px 14px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---------- onglet Graphiques ---------- */
+:root{--g1:#1D9DD9;--g2:#E50C7E;--g3:#E3B505;--g4:#2E9E6B;--g5:#7A4FBF;--g6:#F07C2A;--g7:#5C8FA8;--g8:#A0A09A}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--g1:#3DB2EA;--g2:#F2539F;--g3:#F2CC3D;--g4:#45BE87;--g5:#9E7BE0;--g6:#F79A55;--g7:#86B3C9;--g8:#77776F}}
+:root[data-theme="dark"]{--g1:#3DB2EA;--g2:#F2539F;--g3:#F2CC3D;--g4:#45BE87;--g5:#9E7BE0;--g6:#F79A55;--g7:#86B3C9;--g8:#77776F}
+.gfx-intro{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.donut-wrap{display:grid;grid-template-columns:minmax(180px,240px) minmax(0,1fr);gap:22px;align-items:center}
+@media (max-width:620px){.donut-wrap{grid-template-columns:1fr;justify-items:center}}
+.donut-wrap svg{width:100%;max-width:240px;height:auto}
+svg.donut path{stroke:var(--surface);stroke-width:2;cursor:default}
+svg.donut path:hover{opacity:.85}
+svg.donut .c1{font-weight:900;font-size:22px;fill:var(--ink)}
+svg.donut .c2{font-size:11px;fill:var(--muted)}
+.legend{list-style:none;margin:0;padding:0;display:grid;gap:6px;width:100%}
+.legend li{display:grid;grid-template-columns:12px minmax(0,1fr) auto auto;gap:10px;align-items:center;font-size:14px}
+.legend .sw{width:12px;height:12px;border-radius:3px}
+.legend .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.legend .v{font-weight:700;text-align:right;white-space:nowrap}
+.legend .p{color:var(--muted);text-align:right;min-width:52px;white-space:nowrap}
+svg.hchart text{font-size:12px;font-family:inherit;fill:var(--ink)}
+svg.hchart text.v{font-weight:700}
+svg.hchart text.rk{fill:var(--muted)}
+svg.hchart rect.t{fill:var(--line)}
+svg.hchart rect.bar{fill:var(--g1)}
+svg.hchart.mag rect.bar{fill:var(--g2)}
+svg.hchart rect.bar:hover{opacity:.85}
+svg.chart rect.st:hover{opacity:.8}
+.gfx-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:13px;color:var(--muted)}
+.gfx-legend span{display:inline-flex;align-items:center;gap:6px}
+.gfx-legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.gfx-note{font-size:13px;color:var(--muted);margin:10px 0 0}
 </style>
 </head>
 <body>
@@ -263,6 +294,7 @@ svg.chart rect.hl{fill:var(--sign)}
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="synthese" aria-selected="true">Synthèse</button>
+      <button role="tab" data-tab="graphiques">Graphiques</button>
       <button role="tab" data-tab="produits">Produits</button>
       <button role="tab" data-tab="evolution">Évolution par produit</button>
       <button role="tab" data-tab="agences">Agences</button>
@@ -274,6 +306,7 @@ svg.chart rect.hl{fill:var(--sign)}
 </header>
 <main>
   <section class="panel on" id="p-synthese"></section>
+  <section class="panel" id="p-graphiques"></section>
   <section class="panel" id="p-produits"></section>
   <section class="panel" id="p-evolution"></section>
   <section class="panel" id="p-agences"></section>
@@ -1405,8 +1438,146 @@ document.getElementById('updBtn').onclick=openModal;
 })();
 
 
+
+/* ---------- Graphiques ---------- */
+const GCOL=['var(--g1)','var(--g2)','var(--g3)','var(--g4)','var(--g5)','var(--g6)','var(--g7)'];
+const GOTHER='var(--g8)';
+const gfxState={cat:'cmd',prod:'cmd',ag:'cmd'};
+/* commandes et CA par catégorie : une commande compte une fois par catégorie */
+function catAgg(ords){
+  const m=new Map();
+  for(const o of ords){const seen=new Set();
+    for(const [p,q,ht] of o.i){const c=D.products[p][1]||'Sans catégorie';let r=m.get(c);if(!r){r={l:c,cmd:0,ca:0};m.set(c,r)}
+      r.ca+=ht;if(!seen.has(c)){seen.add(c);r.cmd++}}}
+  return [...m.values()];
+}
+/* garde les 7 premières catégories, regroupe le reste dans « Autres » */
+function topCats(items,key,n=7){
+  const s=items.slice().sort((a,b)=>b[key]-a[key]);
+  if(s.length<=n+1)return s.map((x,k)=>({l:x.l,v:x[key],col:GCOL[k%GCOL.length]}));
+  const head=s.slice(0,n).map((x,k)=>({l:x.l,v:x[key],col:GCOL[k]}));
+  const rest=s.slice(n);
+  head.push({l:'Autres ('+rest.length+' catégories)',v:rest.reduce((t,x)=>t+x[key],0),col:GOTHER,others:rest.map(x=>x.l)});
+  return head;
+}
+function donutSVG(items,center,sub,fmt){
+  const tot=items.reduce((s,x)=>s+x.v,0)||1,R=100,r=62,cx=110,cy=110;
+  let a0=-Math.PI/2,s=`<svg class="donut" viewBox="0 0 220 220" role="img" aria-label="${esc(sub)}">`;
+  items.forEach(x=>{
+    const frac=x.v/tot;if(frac<=0)return;
+    if(frac>=.9999){s+=`<path fill="${x.col}" d="M${cx} ${cy-R}A${R} ${R} 0 1 1 ${cx-.01} ${cy-R}Z M${cx} ${cy-r}A${r} ${r} 0 1 0 ${cx+.01} ${cy-r}Z" fill-rule="evenodd"><title>${esc(x.l)} : ${esc(fmt(x.v))} (${pct(frac)})</title></path>`;return}
+    const a1=a0+frac*2*Math.PI,lg=frac>.5?1:0;
+    const p=(rad,ang)=>[cx+rad*Math.cos(ang),cy+rad*Math.sin(ang)].map(v=>v.toFixed(2)).join(' ');
+    s+=`<path fill="${x.col}" d="M${p(R,a0)}A${R} ${R} 0 ${lg} 1 ${p(R,a1)}L${p(r,a1)}A${r} ${r} 0 ${lg} 0 ${p(r,a0)}Z"><title>${esc(x.l)} : ${esc(fmt(x.v))} (${pct(frac)})</title></path>`;
+    a0=a1;
+  });
+  return s+`<text class="c1" x="${cx}" y="${cy+4}" text-anchor="middle">${esc(center)}</text><text class="c2" x="${cx}" y="${cy+22}" text-anchor="middle">${esc(sub)}</text></svg>`;
+}
+function legendHTML(items,fmt){
+  const tot=items.reduce((s,x)=>s+x.v,0)||1;
+  return '<ul class="legend">'+items.map(x=>`<li${x.others?` title="${esc(x.others.join(', '))}"`:''}><span class="sw" style="background:${x.col}"></span><span class="nm">${esc(x.l)}</span><span class="v">${fmt(x.v)}</span><span class="p">${pct(x.v/tot)}</span></li>`).join('')+'</ul>';
+}
+/* classement en barres horizontales (SVG) */
+function hChart(el,items,fmt,opt={}){
+  if(!items.length){el.innerHTML='<div class="empty">Aucune donnée sur la période.</div>';return}
+  const w=Math.max(300,el.clientWidth||600),rowH=30,lw=Math.min(Math.round(w*.5),340),vw=84,bw=Math.max(40,w-lw-vw-10),h=items.length*rowH+4;
+  const mx=Math.max(...items.map(x=>x.v),1),maxCh=Math.floor((lw-26)/6.6);
+  const cut=s=>s.length>maxCh?s.slice(0,maxCh-1)+'…':s;
+  let s=`<svg class="hchart${opt.mag?' mag':''}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(opt.aria||'Classement')}">`;
+  items.forEach((x,k)=>{const y=k*rowH+4,bl=Math.max(2,bw*x.v/mx);
+    s+=`<g><title>${esc(x.l)} : ${esc(fmt(x.v))}</title><text class="rk" x="0" y="${y+15}">${k+1}</text><text x="22" y="${y+15}">${esc(cut(x.l))}</text>`+
+       `<rect class="t" x="${lw}" y="${y+5}" width="${bw}" height="12" rx="3"/><rect class="bar" x="${lw}" y="${y+5}" width="${bl.toFixed(1)}" height="12" rx="3"/>`+
+       `<text class="v" x="${w}" y="${y+15}" text-anchor="end">${esc(fmt(x.v))}</text></g>`});
+  el.innerHTML=s+'</svg>';
+}
+/* barres empilées par mois et par catégorie */
+function stackChart(el,keys,series,opt={}){
+  const w=Math.max(300,el.clientWidth||600),h=opt.h||260,pl=46,pr=8,pt=12,pb=30;
+  const tots=keys.map((_,i)=>series.reduce((s,x)=>s+x.vals[i],0));
+  const mx=niceMax(Math.max(...tots,0)),iw=w-pl-pr,ih=h-pt-pb,n=keys.length,bw=iw/n,gap=Math.min(6,bw*.25);
+  const step=Math.ceil(n/Math.max(1,Math.floor(iw/46)));
+  let s=`<svg class="chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(opt.aria||'Graphique')}">`;
+  for(let k=0;k<=4;k++){const y=pt+ih-ih*k/4;s+=`<line class="grid" x1="${pl}" x2="${w-pr}" y1="${y}" y2="${y}"/><text x="${pl-6}" y="${y+4}" text-anchor="end">${nf.format(mx*k/4)}</text>`}
+  keys.forEach((k,i)=>{let y0=pt+ih;const x=pl+i*bw+gap/2;
+    series.forEach(se=>{const v=se.vals[i];if(!v)return;const bh=ih*v/mx;y0-=bh;
+      s+=`<rect class="st" fill="${se.col}" x="${x}" y="${y0}" width="${Math.max(1,bw-gap)}" height="${bh}"><title>${esc(opt.lbl(k))} · ${esc(se.l)} : ${nf.format(v)} commande${v>1?'s':''}</title></rect>`});
+    if(i%step===0)s+=`<text x="${x+(bw-gap)/2}" y="${h-10}" text-anchor="middle">${esc(opt.lbl(k))}</text>`});
+  el.innerHTML=s+'</svg>';
+}
+function segBtns(name,cur){
+  return `<div class="seg" role="group" aria-label="Indicateur" data-g="${name}"><button data-v="cmd" aria-pressed="${cur==='cmd'}">Commandes</button><button data-v="ca" aria-pressed="${cur==='ca'}">CA HT</button></div>`;
+}
+function renderGraphiques(){
+  const el=document.getElementById('p-graphiques'),ords=F();
+  if(!ords.length){el.innerHTML='<div class="empty">Aucune commande sur cette période. Choisissez une autre année ou un autre mois.</div>';return}
+  const ca=ords.reduce((s,o)=>s+o.t,0),A=agAgg(ords);
+  el.innerHTML=`
+  <div class="gfx-intro"><div><h2>Graphiques</h2><p class="lead">${periodLabel()}. Une vue simplifiée des résultats : ce qui se vend, qui commande et comment se répartissent les commandes. Montants HT, produits uniquement, avant remise. Survolez un élément pour voir le détail.</p></div></div>
+  <div class="kpis">
+    <div class="kpi"><b>${nf.format(ords.length)}</b><span>commandes</span></div>
+    <div class="kpi"><b>${eur.format(ca)}</b><span>CA HT produits</span></div>
+    <div class="kpi"><b>${eur.format(ca/ords.length)}</b><span>panier moyen HT</span></div>
+    <div class="kpi"><b>${nf.format(A.length)}</b><span>agences clientes</span></div>
+  </div>
+  <div class="grid2">
+    <div class="box"><div class="box-head"><h3 id="gCatT"></h3>${segBtns('cat',gfxState.cat)}</div><div class="donut-wrap" id="gCat"></div>
+      <p class="gfx-note" id="gCatN"></p></div>
+    <div class="box"><div class="box-head"><h3>Fidélité des agences</h3></div><div class="chart-wrap" id="gFid"></div>
+      <p class="gfx-note" id="gFidN"></p></div>
+  </div>
+  <div class="grid2">
+    <div class="box"><div class="box-head"><h3 id="gProdT"></h3>${segBtns('prod',gfxState.prod)}</div><div class="chart-wrap" id="gProd"></div></div>
+    <div class="box"><div class="box-head"><h3 id="gAgT"></h3>${segBtns('ag',gfxState.ag)}</div><div class="chart-wrap" id="gAg"></div></div>
+  </div>
+  <div class="box"><div class="box-head"><h3 id="gMoisT"></h3></div><div class="chart-wrap" id="gMois"></div><div class="gfx-legend" id="gMoisL"></div></div>`;
+
+  const isCA=k=>gfxState[k]==='ca',fmtOf=k=>isCA(k)?v=>eur.format(v):v=>nf.format(v);
+  const CA_ITEMS=catAgg(ords);
+  const drawCat=()=>{
+    const key=gfxState.cat,items=topCats(CA_ITEMS,key),f=fmtOf('cat');
+    document.getElementById('gCatT').textContent=isCA('cat')?'Répartition du CA HT par typologie de produits':'Répartition des commandes par typologie de produits';
+    document.getElementById('gCat').innerHTML=donutSVG(items,isCA('cat')?eur.format(ca):nf.format(ords.length),isCA('cat')?'CA HT':'commandes',f)+legendHTML(items,f);
+    document.getElementById('gCatN').textContent=isCA('cat')?'Part de chaque catégorie dans le chiffre d\'affaires produits.':'Une commande qui contient des produits de plusieurs catégories compte dans chacune : le total des parts peut donc dépasser le nombre de commandes.';
+  };
+  const drawProd=()=>{
+    const P=prodAgg(ords).filter(p=>p.cmd>0),k=isCA('prod')?'ca':'cmd';
+    const items=P.sort((a,b)=>b[k]-a[k]||b.ca-a.ca).slice(0,10).map(p=>({l:p.name,v:p[k]}));
+    document.getElementById('gProdT').textContent='Top 10 best sellers'+(isCA('prod')?', en CA HT':', en nombre de commandes');
+    hChart(document.getElementById('gProd'),items,fmtOf('prod'),{aria:'Top 10 des produits'});
+  };
+  const drawAg=()=>{
+    const k=isCA('ag')?'ca':'cmd',items=A.slice().sort((a,b)=>b[k]-a[k]||b.ca-a.ca).slice(0,10).map(a=>({l:D.agencies[a.i][0],v:a[k]}));
+    document.getElementById('gAgT').textContent='Agences qui ont le plus commandé'+(isCA('ag')?', en CA HT':', en nombre de commandes');
+    hChart(document.getElementById('gAg'),items,fmtOf('ag'),{mag:true,aria:'Top 10 des agences'});
+  };
+  const drawFid=()=>{
+    const B=[['1 commande',1,1],['2',2,2],['3 à 5',3,5],['6 à 10',6,10],['Plus de 10',11,1e9]];
+    const vals=B.map(([l,a,b])=>A.filter(x=>x.cmd>=a&&x.cmd<=b).length);
+    barChart(document.getElementById('gFid'),B.map(b=>b[0]),vals,v=>nf.format(v)+' agence'+(v>1?'s':''),{h:220,aria:'Nombre d\'agences selon leur nombre de commandes',hl:i=>i===0});
+    const rec=A.length-vals[0];
+    document.getElementById('gFidN').textContent=`Nombre d'agences selon leur nombre de commandes sur la période. ${nf.format(rec)} agences sur ${nf.format(A.length)} (${pct(rec/A.length)}) ont commandé au moins deux fois ; la barre jaune montre celles qui n'ont commandé qu'une fois.`;
+  };
+  const drawMois=()=>{
+    const keys=monthKeys(ords),idx=new Map(keys.map((k,i)=>[k,i]));
+    const cats=topCats(CA_ITEMS,'cmd',6);
+    const pos=new Map();cats.forEach((c,k)=>{if(c.others)c.others.forEach(o=>pos.set(o,k));else pos.set(c.l,k)});
+    const series=cats.map(c=>({l:c.others?'Autres':c.l,col:c.col,vals:keys.map(()=>0)}));
+    ords.forEach(o=>{const i=idx.get(o.ym);if(i==null)return;const seen=new Set();
+      o.i.forEach(([p])=>{const c=D.products[p][1]||'Sans catégorie';if(seen.has(c))return;seen.add(c);const k=pos.get(c);if(k!=null)series[k].vals[i]++})});
+    const byYear=S.month!=='all';
+    document.getElementById('gMoisT').textContent='Commandes par typologie de produits, '+(byYear?'en '+MOISL[S.month-1].toLowerCase()+' de chaque année':'mois par mois');
+    stackChart(document.getElementById('gMois'),keys,series,{lbl:k=>byYear?k.slice(0,4):ymLabel(k),aria:'Commandes par mois et par catégorie'});
+    document.getElementById('gMoisL').innerHTML=series.map(se=>`<span><i style="background:${se.col}"></i>${esc(se.l)}</span>`).join('');
+  };
+  const D2={cat:drawCat,prod:drawProd,ag:drawAg};
+  el.querySelectorAll('.seg[data-g]').forEach(g=>g.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    gfxState[g.dataset.g]=b.dataset.v;g.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));D2[g.dataset.g]()}));
+  const all=()=>{drawCat();drawFid();drawProd();drawAg();drawMois()};
+  all();el._redraw=all;
+}
+
 /* ---------- navigation ---------- */
-const R={synthese:renderSynthese,produits:renderProduits,evolution:renderEvolution,agences:renderAgences,reseau:renderReseau,carte:renderCarte,codes:renderCodes};
+const R={synthese:renderSynthese,graphiques:renderGraphiques,produits:renderProduits,evolution:renderEvolution,agences:renderAgences,reseau:renderReseau,carte:renderCarte,codes:renderCodes};
 function render(){
   document.getElementById('periodSign').textContent=periodLabel()+' : '+nf.format(F().length)+' commandes';
   document.querySelectorAll('section.panel').forEach(p=>p.classList.toggle('on',p.id==='p-'+S.tab));
