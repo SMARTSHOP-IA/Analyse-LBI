@@ -499,6 +499,33 @@ table.cmp .up{color:var(--g4);font-weight:800}table.cmp .down{color:var(--brick)
   .report{box-shadow:none;border-radius:0;padding:0;max-width:none}
   .report .rp-sec,.report .rp-kpis{break-inside:avoid}
 }
+
+/* ---------- assistant ---------- */
+.ai-fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:46;border:0;cursor:pointer;display:inline-flex;align-items:center;gap:10px;padding:12px 18px 12px 14px;border-radius:99px;background:var(--grad);color:#fff;font-weight:900;font-size:14px;box-shadow:6px 6px 16px rgba(14,111,181,.35),-4px -4px 12px var(--sh-l)}
+.ai-fab svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.ai-fab[hidden]{display:none}
+.ai-panel{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));width:min(440px,calc(100vw - 36px));height:min(640px,calc(100vh - 36px));z-index:47;background:var(--paper);border-radius:var(--r);box-shadow:var(--raise),0 20px 50px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow:hidden}
+.ai-panel[hidden]{display:none}
+.ai-head{display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--grad);color:#fff}
+.ai-head b{font-size:15px}
+.ai-head span{font-size:12px;opacity:.85;display:block}
+.ai-head button{margin-left:auto;border:0;background:rgba(255,255,255,.18);color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;font-weight:900;line-height:1}
+.ai-log{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.ai-msg{max-width:92%;padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.45}
+.ai-msg.u{align-self:flex-end;background:var(--grad);color:#fff;border-bottom-right-radius:4px}
+.ai-msg.a{align-self:flex-start;background:var(--surface);box-shadow:var(--raise-xs);border-bottom-left-radius:4px}
+.ai-msg.a b{color:var(--teal-ink)}
+.ai-msg.a ol,.ai-msg.a ul{margin:6px 0 0;padding-left:20px}
+.ai-msg.a li{margin:2px 0}
+.ai-msg .ai-go{display:inline-block;margin-top:8px;border:0;background:var(--paper);box-shadow:var(--inset-sm);color:var(--teal-ink);font-weight:800;font-size:13px;padding:6px 12px;border-radius:99px;cursor:pointer}
+.ai-msg .ai-muted{color:var(--muted);font-size:12px;display:block;margin-top:6px}
+.ai-sugg{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 10px}
+.ai-sugg button{border:0;background:var(--surface);box-shadow:var(--raise-xs);color:var(--ink);font-weight:700;font-size:12px;padding:6px 11px;border-radius:99px;cursor:pointer;text-align:left}
+.ai-form{display:flex;gap:8px;padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px));background:var(--surface)}
+.ai-form input{flex:1;border:0;background:var(--paper);box-shadow:var(--inset-sm);border-radius:99px;padding:11px 16px;font-weight:600;font-size:14px;color:var(--ink);min-width:0}
+.ai-form button{border:0;background:var(--grad);color:#fff;font-weight:900;border-radius:99px;padding:0 18px;cursor:pointer}
+@media (max-width:1000px){.ai-fab{bottom:calc(84px + env(safe-area-inset-bottom,0px))}.ai-panel{right:8px;bottom:8px;width:calc(100vw - 16px);height:calc(100vh - 16px)}.user-chip{display:none}}
+@media print{.ai-fab,.ai-panel{display:none!important}}
 </style>
 <meta name="robots" content="noindex,nofollow">
 </head>
@@ -543,6 +570,14 @@ table.cmp .up{color:var(--g4);font-weight:800}table.cmp .down{color:var(--brick)
     </main>
   </div>
 </div>
+
+<button class="ai-fab" id="aiFab" aria-label="Poser une question"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>Poser une question</button>
+<div class="ai-panel" id="aiPanel" hidden role="dialog" aria-label="Assistant">
+  <div class="ai-head"><div><b>Assistant</b><span>Répond à partir des données de l'outil, en tenant compte des filtres Année et Mois.</span></div><button id="aiClose" aria-label="Fermer">×</button></div>
+  <div class="ai-log" id="aiLog"></div>
+  <div class="ai-sugg" id="aiSugg"></div>
+  <form class="ai-form" id="aiForm"><input id="aiIn" type="text" placeholder="Ex. : quelle agence a passé le plus de commandes ?" autocomplete="off" aria-label="Votre question"><button type="submit">Envoyer</button></form>
+</div>
 <nav class="bottom-nav" aria-label="Navigation"><button data-sec="dashboard" aria-current="false"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>Tableau</button><button data-sec="produits" aria-current="false"><svg viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5"/><path d="M12 12v9"/></svg>Produits</button><button data-sec="agences" aria-current="false"><svg viewBox="0 0 24 24"><path d="M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z"/><circle cx="12" cy="10" r="2.3"/></svg>Agences</button><button data-sec="codes" aria-current="false"><svg viewBox="0 0 24 24"><path d="M4 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><path d="M10 7v10" stroke-dasharray="2 2"/></svg>Codes</button></nav>
 
 <div class="modal" id="updModal" hidden role="dialog" aria-modal="true" aria-labelledby="updTitle"><div class="modal-card" id="updCard"></div></div>
@@ -579,6 +614,7 @@ const COMM_META=+((document.querySelector('meta[name="ss-commission"]')||{}).con
 let SETTINGS={commission:{rate:COMM_META,base:'net'},goals:{}};
 if(D.settings)SETTINGS=Object.assign({},SETTINGS,D.settings);
 const commRate=()=>+(SETTINGS.commission&&SETTINGS.commission.rate)||0;
+/* base de commission : CA HT produits uniquement (o.t), jamais les frais de port (o.s) */
 const commBase=o=>SETTINGS.commission&&SETTINGS.commission.base==='brut'?o.t:Math.max(0,o.t-(o.r||0));
 const commOf=ords=>ords.reduce((s,o)=>s+commBase(o),0)*commRate();
 const hasShip=()=>D.orders.some(o=>o.s>0);
@@ -1866,7 +1902,7 @@ const KDEF=[
   {k:'cmd',l:'commandes',f:v=>nf.format(v)},
   {k:'ca',l:'CA HT produits',f:v=>eur.format(v)},
   {k:'net',l:'CA HT après remises',f:v=>eur.format(v)},
-  {k:'comm',l:'commissions reversées',f:v=>eur.format(v),when:()=>commRate()>0,sub:K=>pctLbl(commRate())+' du CA HT '+(SETTINGS.commission.base==='brut'?'avant':'après')+' remises'},
+  {k:'comm',l:'commissions reversées',f:v=>eur.format(v),when:()=>commRate()>0,sub:K=>pctLbl(commRate())+' du CA HT '+(SETTINGS.commission.base==='brut'?'avant':'après')+' remises, hors frais de port'},
   {k:'shipT',l:'frais de port facturés',f:v=>eur.format(v),when:()=>hasShip(),sub:K=>nf.format(K.shipN)+' commandes avec frais de port ('+pct(K.shipN/K.cmd)+')'},
   {k:'basket',l:'panier moyen HT',f:v=>eur.format(v)},
   {k:'ag',l:'agences clientes',f:v=>nf.format(v)},
@@ -2135,6 +2171,7 @@ function openGoals(){
   <h3 style="margin:16px 0 4px">Commission reversée au réseau</h3><div class="form-grid" style="margin-top:4px">
     <label>Taux (%)<input type="number" min="0" max="100" step="0.1" id="gComm" value="${c.rate?Math.round(c.rate*10000)/100:''}"></label>
     <label>Calculée sur<select id="gBase"><option value="net" ${c.base!=='brut'?'selected':''}>CA HT après remises</option><option value="brut" ${c.base==='brut'?'selected':''}>CA HT avant remises</option></select></label></div>
+  <p class="note">La commission est toujours calculée sur le CA HT des produits : les frais de port en sont exclus.</p>
   <p class="note" id="gMsg"></p>
   <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px"><button class="btn" id="gCancel">Annuler</button><button class="btn primary" id="gSave">Enregistrer</button></div>`;
   card.querySelector('#gCancel').onclick=closeModal;
@@ -2349,6 +2386,155 @@ function placeActions(){const foot=document.querySelector('.side-foot');const ta
 placeActions();window.addEventListener('resize',placeActions);
 document.addEventListener('click',e=>{if(e.target.closest('tr.row'))setTimeout(()=>addExcelButtons(document.getElementById('p-'+S.tab)),0)});
 let rt;window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{const p=document.getElementById('p-'+S.tab);if(p._redraw)p._redraw();},150)});
+
+/* ---------- assistant : questions en français, réponses calculées ---------- */
+(function(){
+const fab=document.getElementById('aiFab'),panel=document.getElementById('aiPanel'),log=document.getElementById('aiLog'),sugg=document.getElementById('aiSugg'),form=document.getElementById('aiForm'),inp=document.getElementById('aiIn');
+if(!fab)return;
+const SUGG=["Quelle agence a passé le plus de commandes ?","Quel est le produit le plus vendu ?","Dans quel département y a-t-il le plus d'agences clientes ?","Combien de commandes en septembre 2026 ?","Quel est le CA de 2025 ?","Quel mois est le plus fort ?","Quel code promo est le plus utilisé ?","Compare 2026 et 2025","Quelle catégorie se vend le mieux ?","Combien de nouvelles agences cette année ?"];
+const MONTHS={janvier:1,fevrier:2,mars:3,avril:4,mai:5,juin:6,juillet:7,aout:8,septembre:9,octobre:10,novembre:11,decembre:12,janv:1,fev:2,avr:4,juil:7,sept:9,oct:10,nov:11,dec:12};
+const n=s=>norm(s).replace(/[’']/g,' ').replace(/[^a-z0-9%€ ]+/g,' ').replace(/\s+/g,' ').trim();
+const plural=(k,s,p)=>nf.format(k)+' '+(k>1?p:s);
+let open=false;
+const toggle=o=>{open=o;panel.hidden=!o;fab.hidden=o;if(o){inp.focus();if(!log.children.length)say('Bonjour ! Posez-moi une question sur les commandes, les agences, les produits, les départements ou les codes promo. Je réponds avec les données affichées (filtres Année et Mois de l\'en-tête), sauf si vous précisez une période dans la question.')}};
+fab.onclick=()=>toggle(true);document.getElementById('aiClose').onclick=()=>toggle(false);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&open)toggle(false)});
+function say(html,go){const d=document.createElement('div');d.className='ai-msg a';d.innerHTML=html;if(go){const b=document.createElement('button');b.className='ai-go';b.textContent=go.label;b.onclick=go.fn;d.appendChild(b)}log.appendChild(d);log.scrollTop=log.scrollHeight}
+function ask(q){const d=document.createElement('div');d.className='ai-msg u';d.textContent=q;log.appendChild(d);try{const r=answer(q);say(r.html,r.go)}catch(e){console.warn(e);say('Je n\'ai pas réussi à calculer cette réponse. Essayez de reformuler, par exemple : « quelle agence a passé le plus de commandes en 2025 ? »')}log.scrollTop=log.scrollHeight;drawSugg()}
+form.onsubmit=e=>{e.preventDefault();const q=inp.value.trim();if(!q)return;inp.value='';ask(q)};
+function drawSugg(){const pick=SUGG.slice().sort(()=>Math.random()-.5).slice(0,3);sugg.innerHTML=pick.map(s=>`<button type="button">${esc(s)}</button>`).join('');sugg.querySelectorAll('button').forEach(b=>b.onclick=()=>ask(b.textContent))}
+drawSugg();
+
+/* --- période demandée dans la question --- */
+function parsePeriod(q){
+  const lastY=+LAST.slice(0,4),lastM=+LAST.slice(5,7);
+  let y=null,m=null,label=null,ords=null;
+  if(/12 derniers mois|douze derniers mois|sur un an/.test(q)){ords=D.orders.filter(o=>o.d>SLEEP_LIMIT);label='12 derniers mois'}
+  else if(/depuis le debut|toute la periode|au total|en tout|depuis toujours|historique/.test(q)){ords=D.orders;label='toute la période'}
+  else{
+    const my=q.match(/\b(20\d\d)\b/);if(my)y=+my[1];
+    if(/annee derniere|an dernier|l an passe/.test(q))y=lastY-1;if(/cette annee|annee en cours/.test(q))y=lastY;
+    const mm=Object.keys(MONTHS).find(k=>new RegExp('\\b'+k+'\\b').test(q));if(mm)m=MONTHS[mm];
+    if(/ce mois|mois en cours/.test(q)){m=lastM;y=y||lastY}if(/mois dernier|mois precedent/.test(q)){m=lastM-1||12;y=y||(lastM===1?lastY-1:lastY)}
+    if(m&&!y)y=lastY;
+    if(y||m){ords=D.orders.filter(o=>(!y||o.y===y)&&(!m||o.m===m));label=(m?MOISL[m-1]+' ':'')+(y||'')}
+  }
+  if(!ords){ords=F();label=periodLabel().toLowerCase()}
+  return {ords,label,y,m};
+}
+const metricOf=q=>/\bca\b|chiffre d affaires|montant|euros|€|rapporte|recette/.test(q)?'ca':/quantite|unites|exemplaires/.test(q)?'q':'cmd';
+const countOf=q=>{const m=q.match(/\b(top|les|premiers|premieres|meilleurs|meilleures)\s*(\d{1,2})\b/)||q.match(/\b(\d{1,2})\s*(premiers|premieres|meilleurs|meilleures|plus)/);return m?+(m[2]||m[1]):null};
+const cityShort=c=>{if(!c)return '';const parts=c.split(/,\s*/);return parts.length>2?parts.slice(0,2).join(', ')+' …':c};
+const findAgency=q=>{let best=null;D.agencies.forEach((a,i)=>{const nm=n(a[0]);if(nm.length>=4&&q.includes(nm)&&(!best||nm.length>best.l))best={i,l:nm.length}});return best?best.i:null};
+const findProduct=q=>{let best=null;PALL.forEach(p=>{const nm=n(p.name);if(nm.length>=5&&q.includes(nm)&&(!best||nm.length>best.l))best={i:p.i,l:nm.length}});return best?best.i:null};
+const findCat=q=>CATS.find(c=>q.includes(n(c)))||null;
+const goAg=i=>({label:'Voir la fiche de l\'agence',fn:()=>{agState.q=D.agencies[i][0];agState.seg='all';OPEN_ROW={sel:`tr.row[data-a="${i}"]`};goSection('agences','agences');toggle(false)}});
+const goProd=i=>({label:'Voir le produit',fn:()=>{prodState.q=D.products[i][0];prodState.st='all';prodState.cat='all';OPEN_ROW={sel:`tr.row[data-i="${i}"]`};goSection('produits','ventes');toggle(false)}});
+const goSec=(sec,view,label)=>({label,fn:()=>{goSection(sec,view);toggle(false)}});
+const f={cmd:v=>plural(v,'commande','commandes'),ca:v=>eur.format(v)+' HT',q:v=>plural(v,'unité','unités')};
+
+function answer(raw){
+  const q=n(raw);const P=parsePeriod(q),O=P.ords,per=P.label;
+  if(!O.length)return {html:`Aucune commande sur la période demandée (${esc(per)}).`};
+  const kq=countOf(q),metric=metricOf(q),k=kq||1,kl=kq||3,kl5=kq||5;
+  const agI=findAgency(q),prI=findProduct(q),cat=findCat(q);
+  const isLow=/\bmoins\b|\bpire\b|\bfaibles?\b|minimum/.test(q),isTop=!isLow&&/plus|meilleur|top|premier|record|max|mieux|davantage/.test(q);
+  const A=()=>agAgg(O),PR=()=>prodAgg(O).filter(p=>p.cmd>0);
+
+  /* comparaison de deux années */
+  const yrs=[...q.matchAll(/\b(20\d\d)\b/g)].map(m=>+m[1]);
+  if(/compar|versus|\bvs\b|par rapport|contre/.test(q)&&yrs.length>=2){
+    const [a,b]=yrs,OA=D.orders.filter(o=>o.y===a),OB=D.orders.filter(o=>o.y===b);
+    if(!OA.length||!OB.length)return {html:'Il manque des données pour l\'une des deux années.'};
+    const KA=kpiVals(OA),KB=kpiVals(OB),d=(x,y)=>{const v=(x-y)/y*100;return `<b style="color:var(--${v>=0?'g4':'brick'})">${v>=0?'+':''}${nf1.format(v)} %</b>`};
+    const cut=a===+LAST.slice(0,4)?' (année '+a+' incomplète, jusqu\'au '+fd(LAST)+')':'';
+    return {html:`<b>${a} vs ${b}</b>${cut} :<ul><li>Commandes : ${nf.format(KA.cmd)} vs ${nf.format(KB.cmd)} → ${d(KA.cmd,KB.cmd)}</li><li>CA HT : ${eur.format(KA.ca)} vs ${eur.format(KB.ca)} → ${d(KA.ca,KB.ca)}</li><li>Panier moyen : ${eur.format(KA.basket)} vs ${eur.format(KB.basket)} → ${d(KA.basket,KB.basket)}</li><li>Agences clientes : ${nf.format(KA.ag)} vs ${nf.format(KB.ag)} → ${d(KA.ag,KB.ag)}</li></ul>`,go:goSec('dashboard','compare','Ouvrir la comparaison détaillée')};
+  }
+  /* une agence précise */
+  if(agI!=null){
+    const a=A().find(x=>x.i===agI),all=agAgg(D.orders).find(x=>x.i===agI),name=D.agencies[agI][0];
+    if(/derniere commande|quand|date/.test(q))return {html:`<b>${esc(name)}</b> a passé sa dernière commande le <b>${fd(all.last)}</b> et sa première le ${fd(all.first)} (${plural(all.cmd,'commande','commandes')} au total).`,go:goAg(agI)};
+    if(/achete|commande quoi|produits|que commande|qu achete/.test(q)&&!/combien/.test(q)){const src=a||all;const m=new Map();src.orders.forEach(o=>o.i.forEach(([p,qt])=>m.set(p,(m.get(p)||0)+1)));const top=[...m].sort((x,y)=>y[1]-x[1]).slice(0,5);
+      return {html:`Produits les plus commandés par <b>${esc(name)}</b> (${esc(a?per:'toute la période')}) :<ol>${top.map(([p,c])=>`<li>${esc(D.products[p][0])} — ${plural(c,'commande','commandes')}</li>`).join('')}</ol>`,go:goAg(agI)}}
+    if(!a)return {html:`<b>${esc(name)}</b> n'a passé aucune commande sur ${esc(per)}. Sur toute la période : ${plural(all.cmd,'commande','commandes')}, ${eur.format(all.ca)} HT, dernière commande le ${fd(all.last)}.`,go:goAg(agI)};
+    return {html:`<b>${esc(name)}</b>${a.city?' ('+esc(cityShort(a.city))+')':''}, ${esc(per)} : <b>${plural(a.cmd,'commande','commandes')}</b>, ${eur.format(a.ca)} HT, panier moyen ${eur.format(a.avg)}, ${plural(a.nprod,'produit différent','produits différents')}. Dernière commande le ${fd(a.last)}.`,go:goAg(agI)};
+  }
+  /* un produit précis */
+  if(prI!=null){
+    const p=prodAgg(O)[prI],name=D.products[prI][0];
+    if(/qui|quelles agences|acheteurs/.test(q)){const m=new Map();O.forEach(o=>{if(o.i.some(x=>x[0]===prI))m.set(o.a,(m.get(o.a)||0)+1)});const top=[...m].sort((x,y)=>y[1]-x[1]).slice(0,5);
+      return {html:`Agences qui commandent le plus <b>${esc(name)}</b> (${esc(per)}) :<ol>${top.map(([a,c])=>`<li>${esc(D.agencies[a][0])} — ${plural(c,'commande','commandes')}</li>`).join('')}</ol><span class="ai-muted">${plural(m.size,'agence acheteuse','agences acheteuses')} au total.</span>`,go:goProd(prI)}}
+    return {html:`<b>${esc(name)}</b>, ${esc(per)} : <b>${plural(p.cmd,'commande','commandes')}</b>, ${plural(p.q,'unité','unités')}, ${eur.format(p.ca)} HT, ${plural(p.nag,'agence acheteuse','agences acheteuses')}.${p.cmd?' Dernière commande le '+fd(p.last)+'.':''}`,go:goProd(prI)};
+  }
+  /* départements */
+  if(/departement/.test(q)){
+    const M=new Map();O.forEach(o=>{if(!o.dp)return;let r=M.get(o.dp);if(!r){r={dp:o.dp,ag:new Set(),cmd:0,ca:0};M.set(o.dp,r)}r.ag.add(o.a);r.cmd++;r.ca+=o.t});
+    const key=metric==='ca'?'ca':/agence/.test(q)?'ag':'cmd';const rows=[...M.values()].map(r=>({...r,ag:r.ag.size})).sort((x,y)=>isLow?x[key]-y[key]:y[key]-x[key]).slice(0,kl);
+    const lbl={ag:'agences clientes',cmd:'commandes',ca:'CA HT'}[key],fmt=key==='ca'?v=>eur.format(v):v=>nf.format(v);
+    return {html:`Départements avec le ${isLow?'moins':'plus'} ${lbl==='CA HT'?'de CA':'d\''+lbl} (${esc(per)}) :<ol>${rows.map(r=>`<li><b>${r.dp} ${esc(DEPNAME[r.dp]||'')}</b> — ${fmt(r[key])} ${key==='ca'?'':lbl}</li>`).join('')}</ol>`,go:goSec('agences','carte','Voir la carte')};
+  }
+  /* villes */
+  if(/\bville/.test(q)){const M=new Map();O.forEach(o=>{if(!o.v)return;let r=M.get(o.v);if(!r){r={v:o.v,ag:new Set(),cmd:0};M.set(o.v,r)}r.ag.add(o.a);r.cmd++});
+    const key=/agence/.test(q)?'ag':'cmd';const rows=[...M.values()].map(r=>({v:r.v,ag:r.ag.size,cmd:r.cmd})).sort((x,y)=>y[key]-x[key]).slice(0,kl5);
+    return {html:`Villes avec le plus ${key==='ag'?'d\'agences clientes':'de commandes'} (${esc(per)}) :<ol>${rows.map(r=>`<li><b>${esc(r.v)}</b> — ${nf.format(r[key])}</li>`).join('')}</ol>`}}
+  /* codes promo */
+  if(/code|promo|coupon|remise|fidelite|smart points/.test(q)){
+    const C=cpAgg(O);if(!C.length)return {html:`Aucun code utilisé sur ${esc(per)}.`};
+    if(/combien.*remise|montant.*remise|total.*remise|remises/.test(q)&&!/code le plus|quel code/.test(q)){const rem=O.reduce((s,o)=>s+o.r,0),w=O.filter(o=>o.c.length).length;return {html:`Sur ${esc(per)} : <b>${eur2.format(rem)}</b> de remises HT, sur ${plural(w,'commande','commandes')} avec un code (${pct(w/O.length)} des commandes), soit ${pct(rem/O.reduce((s,o)=>s+o.t,0))} du CA HT.`,go:goSec('codes','','Voir les codes promo')}}
+    const key=/remise|montant|€|ca/.test(q)?'rem':'uses';const rows=C.sort((a,b)=>b[key]-a[key]).slice(0,kl);
+    return {html:`Codes les plus ${key==='rem'?'coûteux en remises':'utilisés'} (${esc(per)}) :<ol>${rows.map(c=>`<li><b>${esc(c.code)}</b> — ${plural(c.uses,'utilisation','utilisations')}, ${eur2.format(c.rem)} de remises</li>`).join('')}</ol>`,go:goSec('codes','','Voir les codes promo')};
+  }
+  /* catégories */
+  if(/categorie|typologie|famille|rubrique/.test(q)||cat){
+    const items=catAgg(O).sort((a,b)=>metric==='ca'?b.ca-a.ca:b.cmd-a.cmd);const tot=O.length,ca=O.reduce((s,o)=>s+o.t,0);
+    if(cat){const r=items.find(x=>x.l===cat);return r?{html:`<b>${esc(cat)}</b>, ${esc(per)} : ${plural(r.cmd,'commande','commandes')} (${pct(r.cmd/tot)} des commandes), ${eur.format(r.ca)} HT (${pct(r.ca/ca)} du CA).`}:{html:`Aucune vente dans la catégorie ${esc(cat)} sur ${esc(per)}.`}}
+    const rows=items.slice(0,kl5);
+    return {html:`Catégories ${metric==='ca'?'par CA HT':'par nombre de commandes'} (${esc(per)}) :<ol>${rows.map(r=>`<li><b>${esc(r.l)}</b> — ${metric==='ca'?eur.format(r.ca)+' ('+pct(r.ca/ca)+')':plural(r.cmd,'commande','commandes')+' ('+pct(r.cmd/tot)+')'}</li>`).join('')}</ol>`,go:goSec('dashboard','dashboard','Voir le tableau de bord')};
+  }
+  /* nouvelles agences, perdues, fidélité */
+  if(/nouvelle|nouveaux clients|gagne/.test(q)&&/agence|client/.test(q)){if(!FIRSTA)firstOrders();const ns=new Set(O.map(o=>o.n));const A2=A().filter(a=>ns.has(FIRSTA.get(a.i)));
+    return {html:`<b>${plural(A2.length,'nouvelle agence','nouvelles agences')}</b> sur ${esc(per)} (première commande sur la période)${A2.length?' : '+A2.sort((a,b)=>b.ca-a.ca).slice(0,5).map(a=>esc(a.name)).join(', ')+(A2.length>5?'…':''):''}.`,go:goSec('dashboard','dashboard','Voir agences gagnées et perdues')}}
+  if(/perdu|parti|plus commande|inactive|a relancer/.test(q)){const C2=cmpPeriod();if(!C2||!C2.prev)return {html:'Choisissez une année dans le filtre de l\'en-tête pour calculer les agences perdues par rapport à l\'année précédente.'};const cur=new Set(C2.cur.map(o=>o.a)),lost=agAgg(C2.prev).filter(a=>!cur.has(a.i)).sort((a,b)=>b.ca-a.ca);
+    return {html:`<b>${plural(lost.length,'agence perdue','agences perdues')}</b> : clientes ${esc(C2.vs.replace(/^vs /,'sur '))} et sans commande depuis. Les plus importantes : ${lost.slice(0,5).map(a=>esc(a.name)).join(', ')}. La liste complète est téléchargeable sur le tableau de bord.`,go:goSec('dashboard','dashboard','Voir la liste à relancer')}}
+  if(/fidel|recurrent|plusieurs fois|reachat|recommande/.test(q)&&/agence|client|taux/.test(q)){const Ag=A(),rec=Ag.filter(a=>a.cmd>1).length;return {html:`Sur ${esc(per)}, <b>${plural(rec,'agence','agences')}</b> sur ${nf.format(Ag.length)} ont commandé au moins deux fois (${pct(rec/Ag.length)}). ${nf.format(Ag.length-rec)} n'ont commandé qu'une fois.`,go:goSec('produits','renew','Voir le renouvellement')}}
+  /* pénétration */
+  if(/penetration|annuaire|ik solutions|membres|programme/.test(q)){if(!hasNet())return {html:'Aucun annuaire de réseau n\'est intégré pour ce client.'};const K=kpiVals(O);return {html:`Taux de pénétration sur ${esc(per)} : <b>${pct(K.pen)}</b> (${nf.format(K.penN)} agences de l'annuaire sur ${nf.format(D.network.length)} ont commandé).`,go:goSec('agences','reseau','Voir le programme')}}
+  /* commissions, frais de port */
+  if(/commission/.test(q)){if(!commRate())return {html:'Aucun taux de commission n\'est défini. Un editor peut le saisir dans « Mettre à jour les données » → « Objectifs et commission ».'};return {html:`Commissions reversées sur ${esc(per)} : <b>${eur.format(commOf(O))}</b>, soit ${pctLbl(commRate())} du CA HT ${SETTINGS.commission.base==='brut'?'avant':'après'} remises, hors frais de port.`}}
+  if(/frais de port|livraison|port\b|expedition/.test(q)){if(!hasShip())return {html:'Les frais de port ne figurent pas dans l\'export des commandes actuel. Ajoutez une colonne « Frais de port HT » à l\'export : ils seront lus au prochain import.'};const s=shipOf(O);return {html:`Frais de port sur ${esc(per)} : <b>${eur.format(s.t)}</b> facturés sur ${plural(s.n,'commande','commandes')} (${pct(s.n/O.length)} des commandes). Ils ne sont pas comptés dans le CA produits.`}}
+  /* objectifs */
+  if(/objectif|cible|avancement/.test(q)){const y=goalYear(),g=(SETTINGS.goals||{})[y];if(!g)return {html:`Aucun objectif n'est défini pour ${y}.`};const oy=D.orders.filter(o=>o.y===y),ca=oy.reduce((s,o)=>s+o.t,0);
+    return {html:`Objectifs ${y} :<ul>${g.ca?`<li>CA HT : ${eur.format(ca)} réalisés sur ${eur.format(g.ca)} (<b>${pct(ca/g.ca)}</b>)</li>`:''}${g.cmd?`<li>Commandes : ${nf.format(oy.length)} sur ${nf.format(g.cmd)} (<b>${pct(oy.length/g.cmd)}</b>)</li>`:''}${g.ag?`<li>Agences : ${nf.format(new Set(oy.map(o=>o.a)).size)} sur ${nf.format(g.ag)} (<b>${pct(new Set(oy.map(o=>o.a)).size/g.ag)}</b>)</li>`:''}</ul>`,go:goSec('dashboard','dashboard','Voir les objectifs')}}
+  /* mois le plus fort / le plus faible */
+  if(/\bmois\b/.test(q)&&(isTop||isLow)){
+    const M=new Map();O.forEach(o=>M.set(o.ym,(M.get(o.ym)||0)+(metric==='ca'?o.t:1)));const rows=[...M].sort((a,b)=>isLow?a[1]-b[1]:b[1]-a[1]).slice(0,kl);
+    return {html:`Mois ${isLow?'les plus faibles':'les plus forts'} en ${metric==='ca'?'CA HT':'commandes'} (${esc(per)}) :<ol>${rows.map(([ym,v])=>`<li><b>${MOISL[+ym.slice(5,7)-1]} ${ym.slice(0,4)}</b> — ${metric==='ca'?eur.format(v):plural(v,'commande','commandes')}</li>`).join('')}</ol>`};
+  }
+  /* agences : classement */
+  if(/agence|client/.test(q)&&(isTop||isLow||/classement|liste/.test(q))&&!/combien d agences|nombre d agences/.test(q)){
+    const key=metric==='ca'?'ca':'cmd',rows=A().sort((a,b)=>isLow?a[key]-b[key]:b[key]-a[key]).slice(0,k);
+    if(k===1){const a=rows[0];return {html:`L'agence qui a ${metric==='ca'?'réalisé le '+(isLow?'moins':'plus')+' de CA':'passé le '+(isLow?'moins':'plus')+' de commandes'} sur ${esc(per)} est <b>${esc(a.name)}</b>${a.city?' ('+esc(cityShort(a.city))+')':''} : ${plural(a.cmd,'commande','commandes')}, ${eur.format(a.ca)} HT.`,go:goAg(a.i)}}
+    return {html:`Top ${k} agences en ${metric==='ca'?'CA HT':'commandes'} (${esc(per)}) :<ol>${rows.map(a=>`<li><b>${esc(a.name)}</b> — ${metric==='ca'?eur.format(a.ca):plural(a.cmd,'commande','commandes')}</li>`).join('')}</ol>`,go:goSec('agences','agences','Voir le classement')};
+  }
+  /* produits : classement */
+  if(/produit|article|reference|vendu|best|seller/.test(q)&&(isTop||isLow||/classement|liste/.test(q))&&!/combien de produits|nombre de produits/.test(q)){
+    const key=metric==='ca'?'ca':metric==='q'?'q':'cmd',rows=PR().sort((a,b)=>isLow?a[key]-b[key]:b[key]-a[key]).slice(0,k);
+    if(k===1){const p=rows[0];return {html:`Le produit le ${isLow?'moins':'plus'} vendu sur ${esc(per)} (${metric==='ca'?'en CA':metric==='q'?'en quantité':'en commandes'}) est <b>${esc(p.name)}</b> : ${plural(p.cmd,'commande','commandes')}, ${plural(p.q,'unité','unités')}, ${eur.format(p.ca)} HT, ${plural(p.nag,'agence','agences')}.`,go:goProd(p.i)}}
+    return {html:`Top ${k} produits ${metric==='ca'?'en CA HT':metric==='q'?'en quantité':'en commandes'} (${esc(per)}) :<ol>${rows.map(p=>`<li><b>${esc(p.name)}</b> — ${f[metric==='q'?'q':metric](p[key])}</li>`).join('')}</ol>`,go:goSec('produits','ventes','Voir les produits')};
+  }
+  /* chiffres globaux */
+  const K=kpiVals(O);
+  if(/panier/.test(q))return {html:`Panier moyen HT sur ${esc(per)} : <b>${eur.format(K.basket)}</b> (${nf.format(K.cmd)} commandes, ${eur.format(K.ca)} HT).`};
+  if(/combien d agences|nombre d agences|agences clientes|agences ont commande|combien de clients/.test(q))return {html:`<b>${plural(K.ag,'agence cliente','agences clientes')}</b> sur ${esc(per)}, dont ${nf.format(K.newAg)} nouvelles. ${hasNet()?'Taux de pénétration : '+pct(K.pen)+'.':''}`};
+  if(/combien de produits|nombre de produits|references vendues/.test(q))return {html:`<b>${plural(PR().length,'produit différent vendu','produits différents vendus')}</b> sur ${esc(per)}, sur ${nf.format(D.products.length)} référencés dans l'historique.`};
+  if(metric==='ca'||/chiffre/.test(q))return {html:`CA HT produits sur ${esc(per)} : <b>${eur.format(K.ca)}</b> (${eur.format(K.net)} après remises), pour ${plural(K.cmd,'commande','commandes')}. Panier moyen ${eur.format(K.basket)}.`};
+  if(/combien|nombre|total/.test(q)&&/commande/.test(q))return {html:`<b>${plural(K.cmd,'commande','commandes')}</b> sur ${esc(per)}, pour ${eur.format(K.ca)} HT et ${plural(K.ag,'agence cliente','agences clientes')}.`};
+  if(/delai|frequence|tous les combien|rythme/.test(q))return {html:`Délai médian entre deux commandes d'une même agence sur ${esc(per)} : <b>${K.gap==null?'non calculable':nf.format(Math.round(K.gap))+' jours'}</b>.`};
+  if(/resume|synthese|bilan|situation|comment ca va|point/.test(q))return {html:`Sur ${esc(per)} : <b>${nf.format(K.cmd)}</b> commandes, <b>${eur.format(K.ca)}</b> HT, panier moyen ${eur.format(K.basket)}, ${nf.format(K.ag)} agences clientes dont ${nf.format(K.newAg)} nouvelles. Produit n°1 : ${esc(PR().sort((a,b)=>b.cmd-a.cmd)[0].name)}. Agence n°1 : ${esc(A().sort((a,b)=>b.cmd-a.cmd)[0].name)}.`,go:goSec('dashboard','dashboard','Voir le tableau de bord')};
+  return {html:`Je n'ai pas compris la question. Voici ce que je sais faire :<ul><li>classements : « quelle agence a passé le plus de commandes en 2025 ? », « top 5 produits en CA »</li><li>géographie : « département avec le plus d'agences clientes », « ville avec le plus de commandes »</li><li>chiffres : « combien de commandes en mars 2026 ? », « CA de 2025 », « panier moyen »</li><li>une agence ou un produit par son nom : « que commande IMMOJOY ? », « qui achète le Kit Smartphone ? »</li><li>codes promo, catégories, mois le plus fort, nouvelles agences, agences perdues, commissions, objectifs, « compare 2026 et 2025 »</li></ul>`};
+}
+})();
+
 /* mode sombre */
 (function(){
   const sw=document.getElementById('themeSw');let saved=null;try{saved=localStorage.getItem('ss-theme')}catch(e){}

@@ -17,8 +17,10 @@ Quatre sections, accessibles dans la barre latérale (ou la barre du bas sur mob
 
 Un interrupteur en haut à droite active le mode sombre. Chaque page a un bouton
 « Comment lire cette page », chaque tableau un bouton « Exporter en Excel », et la barre du haut
-une recherche d'agence ou de produit. Les editors définissent les objectifs et le taux de
-commission depuis « Mettre à jour les données » (commission Interkab : 9 % du CA HT après remises).
+une recherche d'agence ou de produit. Le bouton « Poser une question », en bas à droite, ouvre un
+assistant qui répond en français à partir des données (meilleure agence, produit le plus vendu,
+département le plus actif, CA d'une période, codes promo, comparaison de deux années…). Les editors définissent les objectifs et le taux de
+commission depuis « Mettre à jour les données » (commission Interkab : 9 % du CA HT après remises, hors frais de port).
 
 ## Vue groupe
 
