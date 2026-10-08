@@ -281,6 +281,27 @@ svg.chart rect.st:hover{opacity:.8}
 .gbtn-sm{border:1.5px solid var(--line-strong);background:var(--surface);color:var(--ink);font-weight:700;padding:6px 12px;border-radius:99px;cursor:pointer;font-size:13px}
 .gbtn-sm[hidden]{display:none}
 .gbtn-sm:hover{border-color:var(--ink)}
+
+/* ---------- Évolution : courbes par année ---------- */
+.evo-ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;min-width:0;max-width:100%}
+.evo-ctl select{width:420px;max-width:100%;min-width:0;font:inherit;font-size:14px;padding:8px 10px;border:1.5px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--ink)}
+#evoBox .box-head{align-items:flex-start}
+svg.lchart text{fill:var(--muted);font-size:11px;font-family:inherit}
+svg.lchart .grid{stroke:var(--line)}
+svg.lchart .ln{fill:none;stroke-linejoin:round;stroke-linecap:round}
+svg.lchart .hov{fill:transparent}
+svg.lchart .hov:hover{fill:var(--sleep-soft)}
+.ylegend{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.ylegend button{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:99px;padding:5px 12px 5px 10px;font-weight:700;font-size:13px;cursor:pointer}
+.ylegend button i{width:18px;height:4px;border-radius:2px;display:inline-block}
+.ylegend button i.dash{background:repeating-linear-gradient(90deg,var(--ink) 0 5px,transparent 5px 8px)!important}
+.ylegend button[aria-pressed="false"]{opacity:.45;text-decoration:line-through}
+.ytot{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:12px;font-size:13px;color:var(--muted)}
+.ytot b{color:var(--ink)}
+.ytot .up{color:var(--g4);font-weight:700}.ytot .down{color:var(--brick);font-weight:700}
+#etab td.pname{cursor:pointer}
+#etab td.pname:hover{text-decoration:underline}
+#etab tr.sel td.pname{box-shadow:inset 3px 0 0 var(--magenta);font-weight:700}
 </style>
 </head>
 <body>
@@ -717,6 +738,85 @@ function drawProductChart(d,i,ords){
   barChart(d.querySelector('.pchart'),keys.map(k=>S.month!=='all'?k.slice(0,4):ymLabel(k)),[...map.values()],v=>nf.format(v)+' commandes',{h:190,aria:'Commandes par mois'});
 }
 
+
+/* ---------- Évolution : courbes par année ---------- */
+const evoChart={p:'all',cum:false,off:new Set(),avg:true};
+const YCOL=['var(--g1)','var(--g3)','var(--g4)','var(--g5)','var(--g6)','var(--g7)'];
+function yearColor(y){const k=YEARS.length-1-YEARS.indexOf(y);return k===0?'var(--g2)':YCOL[(k-1)%YCOL.length]}
+function evoLabel(){const s=evoChart.p;return s==='all'?'Tous les produits':s.startsWith('c:')?'Catégorie « '+s.slice(2)+' »':D.products[+s][0]}
+function evoYearData(){
+  const s=evoChart.p,m=evoState.metric;
+  const match=s==='all'?()=>true:s.startsWith('c:')?(p=>D.products[p][1]===s.slice(2)):(p=>p===+s);
+  const raw=new Map(YEARS.map(y=>[y,Array(12).fill(0)]));let sameN1=0,sameN=0;
+  const lastY=+LAST.slice(0,4),cut=LAST.slice(5,10);
+  for(const o of D.orders){let v=0,hit=false;
+    for(const [p,q,ht] of o.i){if(!match(p))continue;hit=true;v+=m==='q'?q:m==='ca'?ht:0}
+    if(!hit)continue;if(m==='cmd')v=1;
+    raw.get(o.y)[o.m-1]+=v;
+    if(o.d.slice(5,10)<=cut){if(o.y===lastY)sameN+=v;else if(o.y===lastY-1)sameN1+=v}}
+  const f=FIRST.slice(0,7),l=LAST.slice(0,7);
+  const series=YEARS.map(y=>{const r=raw.get(y);let acc=0;
+    const vals=r.map((v,i)=>{const k=y+'-'+String(i+1).padStart(2,'0');if(k<f||k>l)return null;acc+=v;return evoChart.cum?acc:v});
+    return {y,vals,tot:r.reduce((a,b)=>a+b,0),full:(y+'-01')>=f&&(y+'-12')<=l}});
+  const avg=Array.from({length:12},(_,i)=>{const xs=series.filter(se=>!evoChart.off.has(se.y)&&se.vals[i]!=null).map(se=>se.vals[i]);return xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null});
+  return {series,avg,sameN,sameN1,lastY};
+}
+function lineChartYears(el,series,fmt,opt={}){
+  const w=Math.max(300,el.clientWidth||700),h=opt.h||300,pl=58,pr=14,pt=14,pb=30,iw=w-pl-pr,ih=h-pt-pb;
+  const all=series.flatMap(se=>se.vals.filter(v=>v!=null));
+  const mx=niceMax(Math.max(...all,0)),X=i=>pl+iw*(i+.5)/12,Y=v=>pt+ih-ih*v/mx;
+  let s=`<svg class="lchart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(opt.aria||'Courbes par année')}">`;
+  for(let k=0;k<=4;k++){const y=pt+ih-ih*k/4;s+=`<line class="grid" x1="${pl}" x2="${w-pr}" y1="${y}" y2="${y}"/><text x="${pl-6}" y="${y+4}" text-anchor="end">${esc(opt.axis?opt.axis(mx*k/4):nf.format(mx*k/4))}</text>`}
+  const narrow=iw<420;
+  MOIS.forEach((m,i)=>{if(!narrow||i%2===0)s+=`<text x="${X(i)}" y="${h-10}" text-anchor="middle">${m}</text>`});
+  /* zones de survol : le détail du mois pour toutes les années */
+  MOIS.forEach((m,i)=>{const lines=series.filter(se=>se.vals[i]!=null).map(se=>se.l+' : '+fmt(se.vals[i])).join('\n');
+    s+=`<rect class="hov" x="${pl+iw*i/12}" y="${pt}" width="${iw/12}" height="${ih}"><title>${esc(MOISL[i])}\n${esc(lines||'Pas de données')}</title></rect>`});
+  series.forEach(se=>{
+    let d='',pen=false;se.vals.forEach((v,i)=>{if(v==null){pen=false;return}d+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1);pen=true});
+    s+=`<path class="ln" d="${d}" stroke="${se.col}" stroke-width="${se.w||2.5}"${se.dash?' stroke-dasharray="6 5"':''} style="pointer-events:none"/>`;
+    if(!se.dash)se.vals.forEach((v,i)=>{if(v!=null)s+=`<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${se.w>3?4:3}" fill="${se.col}" style="pointer-events:none"/>`});
+  });
+  el.innerHTML=s+'</svg>';
+}
+function evoChartBox(){
+  const sold=PALL.filter(p=>p.cmd>0).sort((a,b)=>b.cmd-a.cmd);
+  const opts=`<option value="all">Tous les produits</option><optgroup label="Catégories">${CATS.map(c=>`<option value="c:${esc(c)}">${esc(c)}</option>`).join('')}</optgroup>`+
+    `<optgroup label="Produits, du plus vendu au moins vendu">${sold.map(p=>`<option value="${p.i}">${esc(p.name)} (${nf.format(p.cmd)})</option>`).join('')}</optgroup>`;
+  return `<div class="box" id="evoBox"><div class="box-head"><h3 id="evoT"></h3>
+    <div class="evo-ctl"><select id="evoP" aria-label="Produit affiché">${opts}</select>
+    <div class="seg" role="group" aria-label="Mode"><button data-cum="0">Par mois</button><button data-cum="1">Cumul</button></div></div></div>
+    <div class="chart-wrap" id="evoC"></div><div class="ylegend" id="evoL"></div><div class="ytot" id="evoTot"></div>
+    <p class="gfx-note" id="evoN"></p></div>`;
+}
+function drawEvoChart(){
+  const box=document.getElementById('evoBox');if(!box)return;
+  const sel=box.querySelector('#evoP');sel.value=evoChart.p;if(sel.value!==evoChart.p){evoChart.p='all';sel.value='all'}
+  box.querySelectorAll('[data-cum]').forEach(b=>b.setAttribute('aria-pressed',(b.dataset.cum==='1')===evoChart.cum));
+  const m=evoState.metric,mlbl={cmd:'commandes',q:'quantités',ca:'CA HT'}[m],fmt=m==='ca'?v=>eur.format(v):v=>nf.format(Math.round(v*10)/10);
+  const {series,avg,sameN,sameN1,lastY}=evoYearData();
+  box.querySelector('#evoT').textContent=evoLabel()+' : '+mlbl+(evoChart.cum?' cumulés':'')+' par mois, une courbe par année';
+  const show=series.filter(se=>!evoChart.off.has(se.y)).map(se=>({l:String(se.y),col:yearColor(se.y),vals:se.vals,w:se.y===lastY?3.5:2.5}));
+  if(evoChart.avg&&show.length>1)show.push({l:'Moyenne',col:'var(--ink)',vals:avg,w:1.5,dash:true});
+  lineChartYears(box.querySelector('#evoC'),show,fmt,{axis:m==='ca'?v=>v>=1000?nf.format(Math.round(v/1000))+' k€':nf.format(Math.round(v))+' €':v=>nf.format(v),aria:'Ventes mensuelles par année'});
+  box.querySelector('#evoL').innerHTML=series.map(se=>`<button data-y="${se.y}" aria-pressed="${!evoChart.off.has(se.y)}"><i style="background:${yearColor(se.y)}"></i>${se.y}</button>`).join('')+
+    `<button data-avg="1" aria-pressed="${evoChart.avg}"><i class="dash"></i>Moyenne des années</button>`;
+  box.querySelectorAll('#evoL [data-y]').forEach(b=>b.onclick=()=>{const y=+b.dataset.y;evoChart.off.has(y)?evoChart.off.delete(y):evoChart.off.add(y);drawEvoChart()});
+  box.querySelector('#evoL [data-avg]').onclick=()=>{evoChart.avg=!evoChart.avg;drawEvoChart()};
+  const prevTot=y=>{const p=series.find(se=>se.y===y-1);return p&&p.full?p.tot:null};
+  box.querySelector('#evoTot').innerHTML=series.map(se=>{
+    let ev='';
+    if(se.y===lastY&&!se.full){if(sameN1>0){const d=(sameN-sameN1)/sameN1;ev=` <span class="${d>=0?'up':'down'}">${d>=0?'+':''}${pct(d)}</span> vs même période ${lastY-1}`}}
+    else if(se.full){const p=prevTot(se.y);if(p){const d=(se.tot-p)/p;ev=` <span class="${d>=0?'up':'down'}">${d>=0?'+':''}${pct(d)}</span> vs ${se.y-1}`}}
+    return `<span><b>${se.y}</b>${se.full?'':' <span>(partielle)</span>'} : <b>${fmt(se.tot)}</b>${ev}</span>`}).join('');
+  box.querySelector('#evoN').textContent='Survolez le graphique pour voir les valeurs de chaque année pour un mois. Cliquez sur une année dans la légende pour la masquer ou l\'afficher. '+
+    (m==='cmd'?'Commandes contenant au moins un produit de la sélection. ':'')+'Une année partielle ('+YEARS.filter(y=>!series.find(se=>se.y===y).full).join(', ')+') n\'a de points que pour les mois couverts par les données. '+
+    'Astuce : cliquez sur le nom d\'un produit dans le tableau ci-dessous pour afficher sa courbe.';
+  sel.onchange=()=>{evoChart.p=sel.value;drawEvoChart();markEvoRow()};
+  box.querySelectorAll('[data-cum]').forEach(b=>b.onclick=()=>{evoChart.cum=b.dataset.cum==='1';drawEvoChart()});
+}
+function markEvoRow(){document.querySelectorAll('#etab tbody tr[data-p]').forEach(tr=>tr.classList.toggle('sel',tr.dataset.p===evoChart.p))}
+
 /* ---------- Évolution ---------- */
 const evoState={gran:'month',year:null,metric:'cmd',q:'',cat:'all',hide:true,sort:{key:'tot',dir:'desc'}};
 function renderEvolution(){
@@ -740,6 +840,7 @@ function renderEvolution(){
     <label class="chk"><input type="checkbox" id="ehide" ${evoState.hide?'checked':''}> Masquer les produits sans vente</label>
   </div>
   <p class="note" style="margin-top:-4px">${isM?'Le filtre Mois de l\'en-tête ne s\'applique pas ici : les 12 mois de l\'année choisie sont affichés.':'Tous les mois sont cumulés par année. 2023 ne couvre qu\'octobre à décembre, 2026 va jusqu\'au 29 septembre.'}</p>
+  ${evoChartBox()}
   <div class="tw" style="max-height:72vh"><table class="heat" id="etab"><thead><tr><th class="s pn" data-k="name" data-def="asc">Produit</th>
     ${cols.map((c,k)=>`<th class="s c" data-k="c${k}">${isM?MOIS[c-1]:c}</th>`).join('')}<th class="s c" data-k="tot">Total</th></tr></thead><tbody></tbody></table></div>`;
   el.querySelectorAll('[data-g]').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.g===evoState.gran);b.onclick=()=>{evoState.gran=b.dataset.g;if(evoState.sort.key.startsWith('c'))evoState.sort={key:'tot',dir:'desc'};renderEvolution()}});
@@ -753,15 +854,17 @@ function renderEvolution(){
     rows=sortRows(rows,evoState.sort.key,evoState.sort.dir);
     const mx=Math.max(1,...rows.flatMap(p=>p.v));
     const sums=cols.map((_,k)=>rows.reduce((s,p)=>s+p.v[k],0)),total=sums.reduce((a,b)=>a+b,0);
-    body.innerHTML=rows.map(p=>`<tr><td class="pn pname" title="${esc(p.cat)}">${esc(p.name)}</td>${p.v.map((v,k)=>{const a=v?(.08+.82*Math.sqrt(v/mx)):0;return `<td class="c" style="${v?`background:rgba(var(--teal-rgb),${a.toFixed(2)});${a>.5?'font-weight:800':''}`:''}">${v?fmt(v):'<span class="muted">·</span>'}</td>`}).join('')}<td class="c tot">${fmt(p.tot)}</td></tr>`).join('')+
+    body.innerHTML=rows.map(p=>`<tr data-p="${p.i}"><td class="pn pname" title="${esc(p.cat)} · cliquez pour afficher la courbe">${esc(p.name)}</td>${p.v.map((v,k)=>{const a=v?(.08+.82*Math.sqrt(v/mx)):0;return `<td class="c" style="${v?`background:rgba(var(--teal-rgb),${a.toFixed(2)});${a>.5?'font-weight:800':''}`:''}">${v?fmt(v):'<span class="muted">·</span>'}</td>`}).join('')}<td class="c tot">${fmt(p.tot)}</td></tr>`).join('')+
       (rows.length?`<tr class="sum"><td class="pn">Total (${nf.format(rows.length)} produits)</td>${sums.map(s=>`<td class="c">${fmt(s)}</td>`).join('')}<td class="c tot">${fmt(total)}</td></tr>`:`<tr><td colspan="${cols.length+2}" class="empty">Aucun produit ne correspond.</td></tr>`);
     el.querySelectorAll('#etab th.s').forEach(t=>{delete t.dataset.dir;if(t.dataset.k===evoState.sort.key)t.dataset.dir=evoState.sort.dir});
+    body.querySelectorAll('tr[data-p] td.pname').forEach(td=>td.onclick=()=>{evoChart.p=td.parentNode.dataset.p;drawEvoChart();markEvoRow();document.getElementById('evoBox').scrollIntoView({behavior:'smooth',block:'start',inline:'nearest'})});
+    markEvoRow();
   };
   el.querySelector('#eq').oninput=e=>{evoState.q=e.target.value;draw()};
   el.querySelector('#ecat').onchange=e=>{evoState.cat=e.target.value;draw()};
   el.querySelector('#ehide').onchange=e=>{evoState.hide=e.target.checked;draw()};
   wireSort(el.querySelector('#etab'),evoState.sort,draw);
-  draw();
+  draw();drawEvoChart();el._redraw=drawEvoChart;
 }
 
 /* ---------- Agences ---------- */
