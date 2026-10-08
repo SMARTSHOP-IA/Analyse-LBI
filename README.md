@@ -5,15 +5,26 @@ des fichiers et historique des sauvegardes.
 
 Quatre sections, accessibles dans la barre latérale (ou la barre du bas sur mobile) :
 
-- **Tableau de bord** : chiffres clés et leur évolution, points clés, graphiques (typologies,
-  best sellers, agences les plus actives, fidélité, agences gagnées et perdues, saisonnalité,
-  concentration du CA, produits achetés ensemble, efficacité des codes, catalogue vendu).
+- **Tableau de bord** : chiffres clés et leur évolution (dont CA après remises, commissions
+  reversées, frais de port), objectifs annuels, points clés, graphiques (typologies, best sellers,
+  agences les plus actives, fidélité, agences gagnées et perdues, saisonnalité, concentration du CA,
+  nouveaux produits et vitesse d'adoption, produits en déclin ou en progression, produits achetés
+  ensemble, efficacité des codes, catalogue vendu). Sous-vues : **Comparer deux périodes** et
+  **Rapport mensuel** (imprimable / PDF).
 - **Produits** : ventes par produit, renouvellement, produits jamais commandés, évolution par année.
 - **Agences** : classement, carte, programme IK Solutions.
 - **Codes promo**.
 
 Un interrupteur en haut à droite active le mode sombre. Chaque page a un bouton
-« Comment lire cette page ».
+« Comment lire cette page », chaque tableau un bouton « Exporter en Excel », et la barre du haut
+une recherche d'agence ou de produit. Les editors définissent les objectifs et le taux de
+commission depuis « Mettre à jour les données » (commission Interkab : 9 % du CA HT après remises).
+
+## Vue groupe
+
+`groupe/index.html` consolide tous les réseaux clients (même connexion Google, mêmes droits).
+Pour ajouter un réseau, ajoutez une ligne dans la liste `CLIENTS` en tête du fichier, avec le
+préfixe de ses collections Firebase. Adresse : https://smartshop-ia.github.io/Analyse-LBI/groupe/
 
 ## Fonctionnement
 
