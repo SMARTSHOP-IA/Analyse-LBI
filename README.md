@@ -1,8 +1,19 @@
 # Étude des commandes – Réseau Interkab
 
-Tableau de bord Smartshop : analyse des commandes du réseau Interkab (produits, agences,
-programme IK Solutions, carte, codes promo), avec import mensuel des fichiers et historique
-des sauvegardes.
+Tableau de bord Smartshop : analyse des commandes du réseau Interkab, avec import mensuel
+des fichiers et historique des sauvegardes.
+
+Quatre sections, accessibles dans la barre latérale (ou la barre du bas sur mobile) :
+
+- **Tableau de bord** : chiffres clés et leur évolution, points clés, graphiques (typologies,
+  best sellers, agences les plus actives, fidélité, agences gagnées et perdues, saisonnalité,
+  concentration du CA, produits achetés ensemble, efficacité des codes, catalogue vendu).
+- **Produits** : ventes par produit, renouvellement, produits jamais commandés, évolution par année.
+- **Agences** : classement, carte, programme IK Solutions.
+- **Codes promo**.
+
+Un interrupteur en haut à droite active le mode sombre. Chaque page a un bouton
+« Comment lire cette page ».
 
 ## Fonctionnement
 
