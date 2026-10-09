@@ -1865,13 +1865,14 @@ function drawUpdHome(msg){
   card.innerHTML=`<h2 id="updTitle">Mettre à jour les données</h2><p class="lead" style="margin:0">Importez la dernière version d'un fichier : un aperçu des changements s'affiche, puis les tableaux sont recalculés et la mise à jour est enregistrée pour toutes les personnes qui consultent ce tableau de bord.</p>
   ${msg?`<p class="${msg.err?'err':''}" style="margin:14px 0 0">${esc(msg.text)}</p>`:''}
   <div class="upd-grid">${Object.entries(KINDS).map(([k,K])=>{const m=D.meta[K.meta];return `<div class="upd-item${k==='annuaire'?' net-only':''}"><h3>${K.title}</h3><p class="muted">${K.desc}<br>Actuel : ${esc(m.file)}, ${fd(m.date)}, ${nf.format(m.count)} ${K.unit}.</p>
-    <button class="btn primary" data-pick="${k}">${K.btn}</button><input type="file" accept="${K.accept}" id="f-${k}" hidden>
+    <button class="btn primary" data-pick="${k}">${K.btn}</button><input type="file" accept="${K.accept}" id="f-${k}" hidden>${k==='orders'&&syncUrl()?` <button class="btn" id="updSync" title="Lit toutes les commandes de la boutique WooCommerce et remplace le jeu de données, avec sauvegarde de la version précédente">Mettre à jour depuis WooCommerce</button>`:''}
     ${SRC[K.src]?`<br><button class="btn link" data-reset="${k}">Revenir au fichier d'origine</button>`:''}</div>`}).join('')}</div>
   <div class="upd-item" style="margin-top:4px"><h3>Objectifs et commission</h3><p class="muted">Objectifs annuels de CA, de commandes et d'agences ; taux de commission reversée au réseau (actuellement ${commRate()>0?pctLbl(commRate()):'aucune'}).</p><button class="btn" id="updGoals">Modifier</button></div>
   <h3 style="margin:22px 0 8px">Historique des sauvegardes</h3><div id="histBox"><p class="note">Chargement…</p></div>
   <div style="text-align:right;margin-top:16px"><button class="btn" id="updClose">Fermer</button></div>`;
   card.querySelector('#updClose').onclick=closeModal;
   card.querySelector('#updGoals').onclick=openGoals;
+  const sb=card.querySelector('#updSync');if(sb)sb.onclick=syncWoo;
   drawHist(card.querySelector('#histBox'));
   card.querySelectorAll('[data-pick]').forEach(b=>{const inp=card.querySelector('#f-'+b.dataset.pick);b.onclick=()=>inp.click();inp.onchange=e=>e.target.files[0]&&preview(b.dataset.pick,e.target.files[0])});
   card.querySelectorAll('[data-reset]').forEach(b=>b.onclick=()=>resetKind(b.dataset.reset));
@@ -2368,12 +2369,14 @@ function openGoals(){
     <label>Taux (%)<input type="number" min="0" max="100" step="0.1" id="gComm" value="${c.rate?Math.round(c.rate*10000)/100:''}"></label>
     <label>Calculée sur<select id="gBase"><option value="net" ${c.base!=='brut'?'selected':''}>CA HT après remises</option><option value="brut" ${c.base==='brut'?'selected':''}>CA HT avant remises</option></select></label></div>
   <p class="note">La commission est toujours calculée sur le CA HT des produits : les frais de port en sont exclus.</p>
+  <h3 style="margin:16px 0 4px">Synchronisation WooCommerce</h3><div class="form-grid" style="margin-top:4px;grid-template-columns:1fr">
+    <label>Adresse du service de synchronisation (Railway), vide si non utilisé<input type="url" id="gSync" placeholder="https://….up.railway.app" value="${esc(SETTINGS.syncUrl||'')}" style="border:0;background:var(--paper);box-shadow:var(--inset-sm);border-radius:12px;padding:9px 12px;font-weight:700;color:var(--ink);width:100%"></label></div>
   <p class="note" id="gMsg"></p>
   <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px"><button class="btn" id="gCancel">Annuler</button><button class="btn primary" id="gSave">Enregistrer</button></div>`;
   card.querySelector('#gCancel').onclick=closeModal;
   card.querySelector('#gSave').onclick=async()=>{
     const goals={};card.querySelectorAll('[data-g]').forEach(i=>{const [y,k]=i.dataset.g.split('.');const v=+i.value;if(v>0){goals[y]=goals[y]||{};goals[y][k]=v}});
-    const next={commission:{rate:(+card.querySelector('#gComm').value||0)/100,base:card.querySelector('#gBase').value},goals,clientKey:SETTINGS.clientKey,clientPublished:SETTINGS.clientPublished};
+    const next={commission:{rate:(+card.querySelector('#gComm').value||0)/100,base:card.querySelector('#gBase').value},goals,clientKey:SETTINGS.clientKey,clientPublished:SETTINGS.clientPublished,syncUrl:(card.querySelector('#gSync').value||'').trim()};
     const btn=card.querySelector('#gSave'),msg=card.querySelector('#gMsg');btn.disabled=true;msg.textContent='Enregistrement…';
     try{if(UPD.db)await saveDoc('settings',next);SETTINGS=next;SRC.settings=next;closeModal();render();publishClient(true);toast('Objectifs et commission enregistrés.')}
     catch(e){msg.textContent='Enregistrement impossible : '+(e.message||e.code||'erreur');msg.className='err';btn.disabled=false}
@@ -2565,6 +2568,26 @@ function renderExport(){
   if(b('xcCreate'))b('xcCreate').onclick=async()=>{SETTINGS.clientKey=newKey();try{await saveDoc('settings',SETTINGS)}catch(e){toast('Enregistrement impossible.',true);delete SETTINGS.clientKey;return}await publishClient();renderExport()};
   if(b('xcPub'))b('xcPub').onclick=async()=>{b('xcPub').disabled=true;await publishClient();renderExport()};
   if(b('xcNew'))b('xcNew').onclick=async()=>{if(!confirm('Régénérer le lien ? L\'ancien lien cessera de fonctionner immédiatement.'))return;const old=SETTINGS.clientKey;SETTINGS.clientKey=newKey();try{await saveDoc('settings',SETTINGS);await publishClient();try{await UPD.db.doc('client/'+old).delete()}catch(e){}}catch(e){toast('Opération impossible.',true)}renderExport()};
+}
+
+
+/* ---------- v6 : synchronisation WooCommerce ---------- */
+const syncUrl=()=>(SETTINGS.syncUrl||'').replace(/\/$/,'');
+async function syncWoo(){
+  if(!syncUrl())return;
+  if(!window.firebase||!firebase.auth||!firebase.auth().currentUser){drawUpdHome({err:true,text:'La synchronisation n\'est possible que depuis l\'outil en ligne, une fois connecté.'});return}
+  busy('Synchronisation avec WooCommerce… (lecture de toutes les commandes, environ 30 secondes)');
+  try{
+    const token=await firebase.auth().currentUser.getIdToken();
+    const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),180000);
+    const res=await fetch(syncUrl()+'/sync/'+encodeURIComponent(PREFIX_ID),{method:'POST',headers:{Authorization:'Bearer '+token},signal:ctrl.signal});clearTimeout(t);
+    let j=null;try{j=await res.json()}catch(e){}
+    if(!res.ok||!j||!j.ok)throw new Error((j&&j.error)||('HTTP '+res.status));
+    const d=await loadDoc('orders');if(d)SRC.orders=d;
+    rebuild();render();publishClient(true);
+    const unk=j.unknownCount?` ${nf.format(j.unknownCount)} nom${j.unknownCount>1?'s':''} de produit nouveau${j.unknownCount>1?'x':''} par rapport à l'historique${j.unknownProducts&&j.unknownProducts.length?' : '+j.unknownProducts.slice(0,8).map(esc).join(', ')+(j.unknownCount>8?'…':''):''}.`:'';
+    drawUpdHome({text:`Commandes synchronisées depuis WooCommerce : ${nf.format(j.count)} commandes (${j.delta>=0?'+':''}${nf.format(j.delta)} par rapport à la version précédente), dernière commande le ${fd(j.last)}. La version précédente est dans l'historique.${unk}`});
+  }catch(e){console.warn(e);drawUpdHome({err:true,text:'Synchronisation impossible : '+(e.name==='AbortError'?'délai dépassé, réessayez dans un instant.':(e.message||e))})}
 }
 
 /* ---------- navigation : 4 sections, sous-vues ---------- */

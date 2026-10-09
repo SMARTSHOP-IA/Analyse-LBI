@@ -1,0 +1,14 @@
+{
+  "name": "smartshop-sync-woocommerce",
+  "version": "1.0.0",
+  "description": "Synchronise les commandes WooCommerce d'un réseau client vers Firebase, pour l'outil Étude des commandes Smartshop.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "sync": "node server.js --once" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "firebase-admin": "^12.3.0",
+    "node-cron": "^3.0.3"
+  }
+}
