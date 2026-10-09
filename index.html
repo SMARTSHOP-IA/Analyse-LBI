@@ -555,6 +555,19 @@ table.cmp .up{color:var(--g4);font-weight:800}table.cmp .down{color:var(--brick)
 .filters #fClear:hover{color:var(--mag)}
 [data-theme="dark"] .filters input[type=date]{color-scheme:dark}
 @media (max-width:760px){.filters .range{width:100%}.filters .range input{flex:1}.filters #fQuick{max-width:none;flex:1}}
+
+.kgroup{margin-bottom:24px}
+.kg-head{display:flex;align-items:center;gap:10px;margin:0 0 12px;flex-wrap:wrap}
+.kg-head h3{margin:0;font-size:17px;font-weight:900;letter-spacing:-.01em}
+.kg-sub{color:var(--muted);font-size:13px;font-weight:600}
+.kg-ico{width:30px;height:30px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;background:var(--surface);box-shadow:var(--raise-sm);color:var(--kg);flex:none}
+.kg-ico svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.kgroup .kpis{grid-template-columns:repeat(var(--n,4),minmax(0,1fr));margin-bottom:0}
+.kgroup .kpi::before{background:var(--kg);opacity:1}
+.kg-ca{--kg:var(--g1)}.kg-cmd{--kg:var(--g2)}.kg-ag{--kg:var(--g3)}.kg-sig{--kg:var(--ink)}
+@media (max-width:1100px){.kgroup .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:760px){.kgroup{margin-bottom:18px}.kg-head h3{font-size:16px}.kgroup .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media print{.kgroup{break-inside:avoid}}
 </style>
 <meta name="robots" content="noindex,nofollow">
 </head>
@@ -2135,6 +2148,19 @@ function kpiVals(ords){
   if(hasNet()){const seen=new Set();A.forEach(a=>{const r=D.agnet[a.i];if(r&&r[0]>=0)seen.add(r[0])});v.pen=seen.size/D.network.length;v.penN=seen.size}
   return v;
 }
+
+/* ---------- v9 : KPI en 4 blocs ---------- */
+const KGROUPS=[
+  {id:'ca',t:'Chiffre d\'affaires',s:'ce que ça rapporte',keys:['ca','net','comm','shipT']},
+  {id:'cmd',t:'Commandes',s:'comment on achète',keys:['cmd','basket','ppo']},
+  {id:'ag',t:'Agences',s:'qui achète',keys:['ag','newAg','pen','gap']},
+  {id:'sig',t:'Concentration & catalogue',s:'signaux à surveiller',keys:['top20','cat']}
+];
+const KICONS={"ca": "<svg viewBox=\"0 0 24 24\"><path d=\"M17 6.5a6 6 0 1 0 0 11\"/><path d=\"M5 10.5h10M5 13.5h10\"/></svg>", "cmd": "<svg viewBox=\"0 0 24 24\"><path d=\"M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.9a1 1 0 0 0 1-.8L20 8H6.2\"/><circle cx=\"9.5\" cy=\"20\" r=\"1.3\"/><circle cx=\"17\" cy=\"20\" r=\"1.3\"/></svg>", "ag": "<svg viewBox=\"0 0 24 24\"><path d=\"M12 21s-6-5.3-6-11a6 6 0 1 1 12 0c0 5.7-6 11-6 11z\"/><circle cx=\"12\" cy=\"10\" r=\"2.3\"/></svg>", "sig": "<svg viewBox=\"0 0 24 24\"><path d=\"M4 19h16\"/><path d=\"M5 15l4-5 3 3 4-6 3 3\"/></svg>"};
+function kpiGroupsHTML(cardMap){
+  return KGROUPS.map(g=>{const cs=g.keys.map(k=>cardMap[k]).filter(Boolean);if(!cs.length)return '';
+    return `<section class="kgroup kg-${g.id}" aria-label="${esc(g.t)}"><div class="kg-head"><span class="kg-ico" aria-hidden="true">${KICONS[g.id]}</span><h3>${g.t}</h3><span class="kg-sub">${g.s}</span></div><div class="kpis" style="--n:${cs.length}">${cs.join('')}</div></section>`}).join('');
+}
 const KDEF=[
   {k:'cmd',l:'commandes',f:v=>nf.format(v)},
   {k:'ca',l:'CA HT produits',f:v=>eur.format(v)},
@@ -2184,25 +2210,26 @@ function renderGraphiques(){
   const ca=ords.reduce((s,o)=>s+o.t,0),A=agAgg(ords);
   const C=cmpPeriod(),K=kpiVals(ords);
   const KC=C&&C.rolling?kpiVals(C.cur):null,KP=C&&C.prev&&C.prev.length?kpiVals(C.prev):null;
-  const cards=KDEF.filter(d=>!(d.net&&!hasNet())&&!(d.when&&!d.when())).map(d=>{
+  const cardMap={};KDEF.filter(d=>!(d.net&&!hasNet())&&!(d.when&&!d.when())).forEach(d=>{
     let extra=d.sub?`<small>${d.sub(K)}</small>`:'';
     if(C&&C.rolling){if(KC){const dl=KP?deltaHTML(d,KC[d.k],KP[d.k],''):'';extra+=`<small title="12 derniers mois, comparés aux 12 mois précédents">12 derniers mois : <b style="font-size:12px;display:inline;margin:0">${d.f(KC[d.k])}</b> ${dl.replace('<small class="dl','<span class="dl').replace('</small>','</span>')}</small>`}}
     else if(KP)extra+=deltaHTML(d,K[d.k],KP[d.k],C.vs);
     if(d.k==='pen')extra=`<small>${nf.format(K.penN)} sur ${nf.format(D.network.length)} agences</small>`+extra;
-    return `<div class="kpi"${d.tip?` title="${esc(d.tip)}"`:''}><b>${d.f(K[d.k])}</b><span>${d.l}</span>${extra}</div>`}).join('');
+    cardMap[d.k]=`<div class="kpi"${d.tip?` title="${esc(d.tip)}"`:''}><b>${d.f(K[d.k])}</b><span>${d.l}</span>${extra}</div>`});
   /* catalogue en ligne vendu sur les 12 derniers mois */
   let catCard='';
   if(hasCat()){const sold=new Set();D.orders.forEach(o=>{if(o.d>SLEEP_LIMIT)o.i.forEach(([p])=>{const c=D.products[p][3];if(c>=0)sold.add(c)})});
     const on=D.catalogue.map((c,k)=>({k,grp:c[2]||'Sans groupe',st:c[3]})).filter(c=>c.st==='En ligne'),ns=on.filter(c=>sold.has(c.k)).length;
     catCard=`<div class="kpi" title="Indicateur calculé sur les 12 derniers mois de données, quel que soit le filtre."><b>${pct(ns/(on.length||1))}</b><span>du catalogue en ligne vendu sur 12 mois</span><small>${nf.format(ns)} produits sur ${nf.format(on.length)}</small></div>`;}
+  cardMap.cat=catCard;
   const cmpNote=!C?'Pour voir l\'évolution, choisissez une année (sans mois, ou avec un mois).':
     C.rolling?(C.prev?'Sous chaque chiffre : les 12 derniers mois et leur évolution par rapport aux 12 mois précédents.':'Sous chaque chiffre : les 12 derniers mois (historique trop court pour comparer avec l\'année précédente).'):
     !C.prev?'Pas de comparaison possible : l\'année précédente n\'est pas couverte en entier par les données.':
     'Sous chaque chiffre : l\'évolution '+C.vs.replace(/^vs /,'par rapport à ')+'. En vert ce qui progresse, en rose ce qui recule.';
   el.innerHTML=`
   <h2>Tableau de bord</h2><p class="lead">${periodLabel()}. L'essentiel en un coup d'œil : chiffres clés, points clés, ce qui se vend, qui commande et comment se répartissent les commandes. Montants HT, produits uniquement, avant remise. Survolez un graphique pour voir le détail ; les boutons Commandes / CA HT changent l'indicateur affiché. ${LEGTXT()}</p>
-  <div class="kpis">${cards}${catCard}</div>
-  <p class="gfx-note" style="margin:-16px 0 22px">${cmpNote}</p>
+  ${kpiGroupsHTML(cardMap)}
+  <p class="gfx-note" style="margin:-8px 0 22px">${cmpNote}</p>
   <div id="dashSynth"></div>
   ${goalsBoxHTML()}
   <div class="grid2">
