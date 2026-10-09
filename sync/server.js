@@ -45,6 +45,9 @@ async function readBase(prefix) {
 const titleCase = s => s.toLowerCase().replace(/(^|[^\p{L}])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
 const padCp = v => { if (v == null || v === '') return ''; const n = Math.round(Number(String(v).replace(/\s/g, ''))); return isFinite(n) && n > 0 ? String(n).padStart(5, '0') : ''; };
 const depOf = cp => !cp ? '' : cp.startsWith('97') ? cp.slice(0, 3) : cp.startsWith('98') ? 'MC' : cp.startsWith('20') ? (+cp < 20200 ? '2A' : '2B') : cp.slice(0, 2);
+const ENT = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ', laquo: '«', raquo: '»', rsquo: '’', lsquo: '‘', ndash: '–', mdash: '—', eacute: 'é', egrave: 'è', agrave: 'à', ccedil: 'ç', ecirc: 'ê', ocirc: 'ô', deg: '°', euro: '€', hellip: '…', trade: '™', reg: '®', copy: '©' };
+const decode = s => String(s == null ? '' : s).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : +e.slice(1)) : (ENT[e.toLowerCase()] ?? m));
+const normKey = s => decode(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');
 const FIXN = { 'Calendrier 2024 A5250 gr': 'Calendrier 2024 A5 250 gr', 'Panneau Agence personnalisable 80x60 cm r/v': 'Panneau agence personnalisable 80x60 cm r/v' };
 const PRIO = ['PLV / Signalétique', 'Papeterie', 'Textile', 'Goodies', 'Matériel', 'Label Interkab', "Produit d'Été ☀️", 'Produits RSE', 'Les incontournables', 'Temps forts'];
 function famOf(s) {
@@ -92,13 +95,16 @@ async function fetchShop(cfg) {
 /* ---------- transformation au format de l'outil ---------- */
 function buildDataset(prefix, { orders, prodCats }, prevProducts) {
   const prodList = [], pidx = new Map(), prodCatCount = new Map(), out = [];
+  // noms déjà connus dans l'outil : on les retrouve même si l'API les écrit un peu différemment (espaces, accents, guillemets)
+  const prevByKey = new Map((prevProducts || []).map(p => [normKey(p[0]), p[0]]));
   for (const o of orders) {
     const n = Number(o.number || o.id); if (!isFinite(n) || !n) continue;
     const bill = o.billing || {}, ship = o.shipping || {};
-    const cp = padCp(ship.postcode || bill.postcode), soc = (bill.company || '').replace(/\s+/g, ' ').trim().toUpperCase() || '(SANS NOM)';
+    const cp = padCp(ship.postcode || bill.postcode), soc = decode(bill.company || '').replace(/\s+/g, ' ').trim().toUpperCase() || '(SANS NOM)';
     const items = [];
     for (const li of (o.line_items || [])) {
-      let name = String(li.parent_name || li.name || '').replace(/[​\s]+/g, ' ').trim() || '(Produit sans nom / supprimé)'; name = FIXN[name] || name;
+      let name = decode(li.parent_name || li.name || '').replace(/[​\s]+/g, ' ').trim() || '(Produit sans nom / supprimé)'; name = FIXN[name] || name;
+      name = prevByKey.get(normKey(name)) || name;
       if (!pidx.has(name)) { pidx.set(name, prodList.length); prodList.push(name); }
       const p = pidx.get(name), cat = prodCats.get(li.product_id) || '';
       if (cat) { const f = famOf(cat).join('|'); const m = prodCatCount.get(p) || new Map(); m.set(f, (m.get(f) || 0) + 1); prodCatCount.set(p, m); }
@@ -106,7 +112,7 @@ function buildDataset(prefix, { orders, prodCats }, prevProducts) {
     }
     const t = r2(items.reduce((s, i) => s + i[2], 0));
     const codes = (o.coupon_lines || []).filter(c => c.code).map(c => [String(c.code).trim().toLowerCase(), r2(c.discount)]);
-    out.push([n, fmtDate(o.date_created), t, r2(o.total), r2(o.discount_total), codes, items, depOf(cp), cp, titleCase(String(ship.city || bill.city || '').trim()), soc, r2(o.shipping_total)]);
+    out.push([n, fmtDate(o.date_created), t, r2(o.total), r2(o.discount_total), codes, items, depOf(cp), cp, titleCase(decode(ship.city || bill.city || '').trim()), soc, r2(o.shipping_total)]);
   }
   const prev = new Map((prevProducts || []).map(p => [p[0], p]));
   const products = prodList.map((name, p) => { const pv = prev.get(name); if (pv) return [name, pv[1], pv[2]];
