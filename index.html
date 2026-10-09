@@ -1676,7 +1676,7 @@ function rebuild(){
   D.meta.commandes=SRC.orders?{file:SRC.orders.file,date:SRC.orders.date,count:SRC.orders.count}:{...ORIG.meta.commandes};
   D.meta.annuaire=SRC.annuaire?{file:SRC.annuaire.file,date:SRC.annuaire.date,count:SRC.annuaire.rows.length}:{...ORIG.meta.annuaire};
   D.meta.catalogue=SRC.catalogue?{file:SRC.catalogue.file,date:SRC.catalogue.date,count:SRC.catalogue.items.length}:{...ORIG.meta.catalogue};
-  prepOrders();deriveNetwork();deriveCatalogue();
+  prepOrders();deriveNetwork();deriveCatalogue();FIRSTA=null;
   document.documentElement.classList.toggle('no-net',!HAS_NET());document.documentElement.classList.toggle('no-cat',!D.catalogue.length);
   if(!HAS_NET()){mapState.mode='ag';agState.seg='all';renewState.seg='all';if(S.view==='reseau')S.view='agences'}
   if(!D.catalogue.length&&prodState.sheet==='never')prodState.sheet='ventes';
@@ -2063,7 +2063,7 @@ function segBtns(name,cur){
 /* ----- indicateurs complémentaires ----- */
 const hasNet=()=>!!(D.network&&D.network.length&&D.agnet);
 const hasCat=()=>!!(D.catalogue&&D.catalogue.length);
-let FIRSTA=null;
+var FIRSTA=null;
 function firstOrders(){ /* première commande de chaque agence, sur tout l'historique */
   const m=new Map();for(const o of D.orders){const f=m.get(o.a);if(!f||o.d<f.d)m.set(o.a,o)}
   FIRSTA=new Map([...m].map(([a,o])=>[a,o.n]));
@@ -2585,7 +2585,7 @@ async function syncWoo(){
     if(!res.ok||!j||!j.ok)throw new Error((j&&j.error)||('HTTP '+res.status));
     const d=await loadDoc('orders');if(d)SRC.orders=d;
     rebuild();render();publishClient(true);
-    const unk=j.unknownCount?` ${nf.format(j.unknownCount)} nom${j.unknownCount>1?'s':''} de produit nouveau${j.unknownCount>1?'x':''} par rapport à l'historique${j.unknownProducts&&j.unknownProducts.length?' : '+j.unknownProducts.slice(0,8).map(esc).join(', ')+(j.unknownCount>8?'…':''):''}.`:'';
+    const unk=j.unknownCount?` ${nf.format(j.unknownCount)} nom${j.unknownCount>1?'s':''} de produit nouveau${j.unknownCount>1?'x':''} par rapport à l'historique${j.unknownProducts&&j.unknownProducts.length?' : '+j.unknownProducts.slice(0,8).join(', ')+(j.unknownCount>8?'…':''):''}.`:'';
     drawUpdHome({text:`Commandes synchronisées depuis WooCommerce : ${nf.format(j.count)} commandes (${j.delta>=0?'+':''}${nf.format(j.delta)} par rapport à la version précédente), dernière commande le ${fd(j.last)}. La version précédente est dans l'historique.${unk}`});
   }catch(e){console.warn(e);drawUpdHome({err:true,text:'Synchronisation impossible : '+(e.name==='AbortError'?'délai dépassé, réessayez dans un instant.':(e.message||e))})}
 }
