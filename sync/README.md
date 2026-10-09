@@ -24,7 +24,9 @@ Les clés (WooCommerce et Firebase) restent sur le serveur : elles ne sont jamai
 | `WC_INTERKAB_STATUSES` | `completed,processing` (statuts Terminée et En cours) |
 | `CRON` | `0 4 * * *` pour une synchronisation automatique chaque nuit à 4 h UTC (6 h à Paris en été) ; laisser vide pour ne synchroniser qu'à la demande |
 
-4. **Settings** → **Networking** → **Generate Domain** : noter l'adresse (`https://….up.railway.app`).
+4. **Settings** → **Networking** → **Generate Domain** : noter l'adresse (`https://….up.railway.app`). Le **port cible** du domaine
+   doit être celui sur lequel le service écoute (variable `PORT`, ex. 8888) ; sinon l'adresse répond « 502 Bad Gateway ».
+   Service Interkab en place : `https://analyse-lbi-production.up.railway.app` (projet Railway « merry-enjoyment »).
 5. Dans l'outil, connecté avec un compte editor : Mettre à jour les données → Objectifs et commission →
    **Synchronisation WooCommerce** → coller l'adresse → Enregistrer. Le bouton « Mettre à jour depuis
    WooCommerce » apparaît dans la carte Commandes.
