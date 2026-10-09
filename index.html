@@ -210,7 +210,12 @@ th.s[data-dir="desc"]::after{border-top-color:currentColor;margin-top:4px}
 th.s[data-dir="asc"]::after{border-bottom-color:currentColor;margin-top:-4px}
 td.n,th.n{text-align:right;white-space:nowrap}
 td.rk{color:var(--muted);width:1%;white-space:nowrap}
-tr.row{cursor:pointer}tr.row:hover td{background:var(--cyan-soft)}
+tr.row{cursor:pointer}
+table tbody tr:not(.detail):not(.sum):hover>td{background:var(--cyan-soft)}
+.heat tbody tr:not(.sum):hover>td.pn{background:var(--cyan-soft)}
+.svg-tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--paper);font-size:13px;font-weight:700;padding:7px 11px;border-radius:10px;white-space:pre-line;z-index:90;box-shadow:0 6px 18px rgba(0,0,0,.25);max-width:320px;transform:translate(-50%,calc(-100% - 12px))}
+.svg-tip[hidden]{display:none}
+svg rect:hover,svg path:hover,svg circle:hover{cursor:default}
 tr.row.open td{background:var(--cyan-soft);border-bottom-color:transparent}
 tr.detail>td{background:var(--paper);padding:16px 18px}
 .pname{font-weight:700}
@@ -661,6 +666,8 @@ const CSS=`
 .cd .cd-lgd i.ln{height:3px;border-radius:2px;width:18px}
 .cd .cd-empty{padding:28px;text-align:center;color:var(--cd-muted)}
 .cd .cd-foot{font-size:12px;color:var(--cd-muted);margin-top:4px}
+.cd-tip{position:fixed;pointer-events:none;background:var(--cd-ink,#1D1D1B);color:var(--cd-paper,#fff);font-size:13px;font-weight:700;padding:7px 11px;border-radius:10px;white-space:pre-line;z-index:90;box-shadow:0 6px 18px rgba(0,0,0,.25);max-width:320px;transform:translate(-50%,calc(-100% - 12px))}
+.cd-tip[hidden]{display:none}
 `;
 function niceMax(v){if(v<=0)return 1;const p=Math.pow(10,Math.floor(Math.log10(v)));const n=v/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p}
 function donut(items,center,sub,fmt){
@@ -703,6 +710,11 @@ function render(root,snap,st,opts){
   opts=opts||{};st=st||{};
   if(!document.getElementById('cd-css')){const t=document.createElement('style');t.id='cd-css';t.textContent=CSS;document.head.appendChild(t)}
   root.classList.add('cd');
+  if(!document.getElementById('cd-tip')){const tip=document.createElement('div');tip.id='cd-tip';tip.className='cd-tip';tip.hidden=true;document.body.appendChild(tip);let cur=null;
+    const titleOf=el=>{while(el&&el.tagName!=='svg'){const t=el.querySelector&&el.querySelector(':scope>title');if(t)return t.textContent;el=el.parentNode}return ''};
+    document.addEventListener('mouseover',e=>{const svg=e.target.closest&&e.target.closest('.cd svg');if(!svg){if(cur){cur=null;tip.hidden=true}return}const txt=titleOf(e.target);if(!txt){if(cur){cur=null;tip.hidden=true}return}cur=e.target;tip.textContent=txt;tip.hidden=false});
+    document.addEventListener('mousemove',e=>{if(tip.hidden)return;tip.style.left=Math.min(window.innerWidth-170,Math.max(170,e.clientX))+'px';tip.style.top=Math.max(50,e.clientY)+'px'});
+    document.addEventListener('mouseout',e=>{if(cur&&!e.relatedTarget?.closest?.('svg')){cur=null;tip.hidden=true}})}
   const agencies=snap.agencies.map((a,i)=>({i,n:a[0]})).sort((a,b)=>a.n.localeCompare(b.n,'fr'));
   const defFrom=snap.last.slice(0,4)+'-01-01';const from=st.from||(defFrom>snap.first.slice(0,10)?defFrom:snap.first.slice(0,10)),to=st.to||snap.last.slice(0,10);
   const O=filtered(snap,{from,to,agency:st.agency});
@@ -711,6 +723,7 @@ function render(root,snap,st,opts){
   const P=cmpOK?snap.orders.filter(o=>o[0]>=prevFrom&&o[0]<=prevTo&&(st.agency==null||st.agency===''||o[1]===+st.agency)):[];
   const ca=O.reduce((s,o)=>s+o[2],0),caP=P.reduce((s,o)=>s+o[2],0);
   const baskets=O.map(o=>o[2]);
+  const qty=O.reduce((s,o)=>s+o[4].reduce((t,i)=>t+i[1],0),0),qtyP=P.reduce((s,o)=>s+o[4].reduce((t,i)=>t+i[1],0),0);
   const goal=opts.goalCa||0;
   const perLabel=fd(from)+' → '+fd(to),prevLabel=fd(prevFrom)+' → '+fd(prevTo);
   const dl=(a,b)=>b?`<small>${pct(a/b)} de la même période un an plus tôt (${esc(nf.format(Math.round(b)))})</small><div class="cd-bar"><i style="width:${Math.min(100,a/b*100).toFixed(1)}%"></i></div>`:`<small>${cmpOK?'pas de période comparable un an plus tôt':'comparaison disponible pour une période d\'un an au plus'}</small>`;
@@ -729,6 +742,7 @@ function render(root,snap,st,opts){
     <div class="cd-kpi mag"><b>${esc(eur2.format(Math.min(...baskets)))}</b><span>le panier le plus petit</span></div>
     <div class="cd-kpi mag"><b>${esc(eur2.format(Math.max(...baskets)))}</b><span>le plus gros panier</span></div>
     <div class="cd-kpi"><b>${nf.format(new Set(O.map(o=>o[1])).size)}</b><span>agences ayant commandé</span></div>
+    <div class="cd-kpi gold"><b>${qty>=10000?nf1.format(qty/1000)+' k':nf.format(qty)}</b><span>visibilité ${esc(snap.client)}</span><small title="Nombre total de supports imprimés aux couleurs du réseau : la somme des quantités commandées (un lot de 5 000 flyers = 5 000 visibilités).">${nf.format(qty)} supports imprimés${cmpOK&&qtyP?' · '+pct(qty/qtyP)+' de la même période un an plus tôt':''}</small></div>
   </div>
   <div class="cd-grid">
     <div class="cd-box"><h3>Top 10 des agences (CA HT)</h3><div id="cdA1"></div></div>
@@ -2616,6 +2630,16 @@ function placeActions(){const mobile=matchMedia('(max-width:1000px)').matches,ta
 placeActions();window.addEventListener('resize',placeActions);
 document.addEventListener('click',e=>{if(e.target.closest('tr.row'))setTimeout(()=>addExcelButtons(document.getElementById('p-'+S.tab)),0)});
 let rt;window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{const p=document.getElementById('p-'+S.tab);if(p._redraw)p._redraw();},150)});
+/* infobulle immédiate sur les graphiques : reprend le texte <title> de l'élément survolé */
+(function(){
+  const tip=document.createElement('div');tip.className='svg-tip';tip.hidden=true;document.body.appendChild(tip);
+  let cur=null;
+  const titleOf=el=>{while(el&&el.tagName!=='svg'){const t=el.querySelector&&el.querySelector(':scope>title');if(t)return t.textContent;el=el.parentNode}return ''};
+  document.addEventListener('mouseover',e=>{const svg=e.target.closest&&e.target.closest('svg');if(!svg||svg.closest('.theme-sw,.nav-item,.ai-fab,.ico-btn,.bottom-nav,.map-box')){if(cur){cur=null;tip.hidden=true}return}
+    const txt=titleOf(e.target);if(!txt){if(cur){cur=null;tip.hidden=true}return}cur=e.target;tip.textContent=txt;tip.hidden=false});
+  document.addEventListener('mousemove',e=>{if(tip.hidden)return;const x=Math.min(window.innerWidth-170,Math.max(170,e.clientX));tip.style.left=x+'px';tip.style.top=Math.max(50,e.clientY)+'px'});
+  document.addEventListener('mouseout',e=>{if(cur&&!e.relatedTarget?.closest?.('svg')){cur=null;tip.hidden=true}});
+})();
 
 /* ---------- assistant : questions en français, réponses calculées ---------- */
 (function(){
