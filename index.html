@@ -545,6 +545,16 @@ table.cmp .up{color:var(--g4);font-weight:800}table.cmp .down{color:var(--brick)
 .xc-url input{flex:1 1 320px;min-width:0;border:0;background:var(--paper);box-shadow:var(--inset-sm);border-radius:12px;padding:9px 12px;font-weight:600;font-size:13px;color:var(--ink)}
 .xc-status{font-size:13px;color:var(--muted)}
 .xc-status b{color:var(--ink)}
+
+.filters input[type=date]{appearance:none;-webkit-appearance:none;border:0;background:var(--paper);color:var(--ink);box-shadow:var(--inset-sm);border-radius:12px;padding:8px 12px;font-weight:700;font-size:14px;font-family:inherit;min-width:0}
+.filters input[type=date]::-webkit-calendar-picker-indicator{opacity:.6;cursor:pointer}
+.filters .range{display:flex;align-items:center;gap:8px}
+.filters .range span{font-size:13px;color:var(--muted);font-weight:700}
+.filters #fQuick{padding:9px 30px 9px 12px;max-width:150px;color:var(--muted)}
+.filters #fClear{border:0;background:var(--paper);box-shadow:var(--inset-sm);border-radius:12px;width:34px;height:36px;font-size:18px;line-height:1;color:var(--muted);cursor:pointer;font-weight:700}
+.filters #fClear:hover{color:var(--mag)}
+[data-theme="dark"] .filters input[type=date]{color-scheme:dark}
+@media (max-width:760px){.filters .range{width:100%}.filters .range input{flex:1}.filters #fQuick{max-width:none;flex:1}}
 </style>
 <meta name="robots" content="noindex,nofollow">
 </head>
@@ -573,6 +583,8 @@ table.cmp .up{color:var(--g4);font-weight:800}table.cmp .down{color:var(--brick)
         <div class="filters">
           <label>Année<select id="fYear"></select></label>
           <label>Mois<select id="fMonth"></select></label>
+          <div class="range" title="Plage de dates personnalisée : remplace l'année et le mois"><span>Du</span><input type="date" id="fFrom" aria-label="Début de la plage"><span>au</span><input type="date" id="fTo" aria-label="Fin de la plage"><button id="fClear" title="Effacer la plage de dates" aria-label="Effacer la plage de dates" hidden>×</button></div>
+          <select id="fQuick" aria-label="Plages rapides"><option value="">Plage rapide…</option><option value="30">30 derniers jours</option><option value="90">90 derniers jours</option><option value="180">6 derniers mois</option><option value="365">12 derniers mois</option><option value="ytd">Depuis le 1er janvier</option><option value="pq">Trimestre précédent</option></select>
         </div>
         <div class="period-sign" id="periodSign" aria-live="polite"></div>
       </div>
@@ -834,6 +846,26 @@ const CTAG={client:'Géré par le client',horsligne:'Hors ligne',ajouter:'À ajo
 
 function dateLong(d){return (+d.slice(8,10))+' '+MOISL[+d.slice(5,7)-1].toLowerCase()+' '+d.slice(0,4)}
 
+/* ---------- v8 : plage de dates personnalisée ---------- */
+const fFrom=document.getElementById('fFrom'),fTo=document.getElementById('fTo'),fClear=document.getElementById('fClear'),fQuick=document.getElementById('fQuick');
+const hasRange=()=>!!(S.from||S.to);
+const rangeBounds=()=>[S.from||FIRST.slice(0,10),S.to||LAST.slice(0,10)];
+const addDays=(iso,n)=>new Date(new Date(iso).getTime()+n*864e5).toISOString().slice(0,10);
+function setRange(a,b,quiet){
+  if(a&&b&&a>b)[a,b]=[b,a];
+  S.from=a||'';S.to=b||'';fFrom.value=S.from;fTo.value=S.to;fClear.hidden=!hasRange();
+  if(hasRange()){S.year='all';S.month='all';fY.value='all';fM.value='all'}
+  if(!quiet){topSel={};render()}
+}
+function syncRangeInputs(){const [a,b]=[FIRST.slice(0,10),LAST.slice(0,10)];fFrom.min=fTo.min=a;fFrom.max=fTo.max=b;fFrom.value=S.from||'';fTo.value=S.to||'';fClear.hidden=!hasRange()}
+fFrom.onchange=()=>{fQuick.value='';setRange(fFrom.value,fTo.value)};
+fTo.onchange=()=>{fQuick.value='';setRange(fFrom.value,fTo.value)};
+fClear.onclick=()=>{fQuick.value='';setRange('','')};
+fQuick.onchange=()=>{const v=fQuick.value,L=LAST.slice(0,10);if(!v)return;
+  if(v==='ytd')setRange(L.slice(0,4)+'-01-01',L);
+  else if(v==='pq'){const y=+L.slice(0,4),q=Math.floor((+L.slice(5,7)-1)/3);const pq=q===0?3:q-1,py=q===0?y-1:y;const m1=pq*3+1,m3=m1+2;const last=new Date(Date.UTC(py,m3,0)).toISOString().slice(0,10);setRange(py+'-'+String(m1).padStart(2,'0')+'-01',last)}
+  else setRange(addDays(L,-(+v-1)),L)};
+
 const fY=document.getElementById('fYear'),fM=document.getElementById('fMonth');
 function prepOrders(){
   D.orders.forEach(o=>{o.y=+o.d.slice(0,4);o.m=+o.d.slice(5,7);o.ym=o.d.slice(0,7)});
@@ -848,14 +880,18 @@ function prepOrders(){
   fY.innerHTML='<option value="all">Toutes</option>'+YEARS.map(y=>`<option value="${y}">${y}</option>`).join('');
   if(S.year!=='all'&&!YEARS.includes(+S.year))S.year='all';
   fY.value=S.year;
+  syncRangeInputs();
 }
 fM.innerHTML='<option value="all">Tous</option>'+MOISL.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
-fY.onchange=()=>{S.year=fY.value;topSel={};render()};
-fM.onchange=()=>{S.month=fM.value;render()};
+fY.onchange=()=>{S.year=fY.value;if(hasRange())setRange('','',true);fQuick.value='';topSel={};render()};
+fM.onchange=()=>{S.month=fM.value;if(hasRange())setRange('','',true);fQuick.value='';render()};
 prepOrders();
 
-function F(){return D.orders.filter(o=>(S.year==='all'||o.y==S.year)&&(S.month==='all'||o.m==S.month))}
+function F(){
+  if(hasRange()){const [a,b]=rangeBounds();return D.orders.filter(o=>{const d=o.d.slice(0,10);return d>=a&&d<=b})}
+  return D.orders.filter(o=>(S.year==='all'||o.y==S.year)&&(S.month==='all'||o.m==S.month))}
 function periodLabel(){
+  if(hasRange()){const [a,b]=rangeBounds();return 'Du '+fd(a)+' au '+fd(b)}
   if(S.year==='all'&&S.month==='all')return 'Toute la période';
   if(S.year==='all')return MOISL[S.month-1]+', toutes années';
   if(S.month==='all')return 'Année '+S.year;
@@ -950,6 +986,7 @@ function wireTops(el,filt){
   });
 }
 function monthKeys(ords){
+  if(hasRange()){const [a,b]=rangeBounds();const out=[];let [y,m]=[+a.slice(0,4),+a.slice(5,7)];const end=b.slice(0,7);while(true){const k=y+'-'+String(m).padStart(2,'0');out.push(k);if(k>=end)break;m++;if(m>12){m=1;y++}}return out}
   if(S.month!=='all'){return YEARS.map(y=>y+'-'+String(S.month).padStart(2,'0')).filter(k=>k>=FIRST.slice(0,7)&&k<=LAST.slice(0,7))}
   if(S.year!=='all'){return Array.from({length:12},(_,i)=>S.year+'-'+String(i+1).padStart(2,'0'))}
   const out=[];let [y,m]=[+FIRST.slice(0,4),+FIRST.slice(5,7)];const end=LAST.slice(0,7);
@@ -982,7 +1019,7 @@ function ordersTable(ords,opts={}){
 const synthState={metric:'cmd'};
 function renderSynthese(){
   const el=document.getElementById('dashSynth'),ords=F();if(!el)return;
-  if(!ords.length){el.innerHTML='<div class="empty">Aucune commande sur cette période. Choisissez une autre année ou un autre mois.</div>';return}
+  if(!ords.length){el.innerHTML='<div class="empty">Aucune commande sur cette période. Choisissez une autre période.</div>';return}
   const ca=ords.reduce((s,o)=>s+o.t,0),rem=ords.reduce((s,o)=>s+o.r,0);
   const P=prodAgg(ords),ag=agAgg(ords),withCode=ords.filter(o=>o.c.length).length;
   const sold=P.filter(p=>p.cmd>0),byCmd=sold.slice().sort((a,b)=>b.cmd-a.cmd||b.ca-a.ca);
@@ -2070,6 +2107,9 @@ function firstOrders(){ /* première commande de chaque agence, sur tout l'histo
 }
 /* période de comparaison : année précédente (même période si l'année est en cours), ou 12 derniers mois en vue « toute la période » */
 function cmpPeriod(){
+  if(hasRange()){const [a,b]=rangeBounds();const len=Math.round((new Date(b)-new Date(a))/864e5)+1;const pb=addDays(a,-1),pa=addDays(pb,-(len-1));
+    if(FIRST.slice(0,10)>pa)return {cur:F(),prev:null};
+    return {cur:F(),prev:D.orders.filter(o=>{const d=o.d.slice(0,10);return d>=pa&&d<=pb}),vs:'vs les '+nf.format(len)+' jours précédents ('+fd(pa)+' – '+fd(pb)+')'}}
   if(S.year==='all'&&S.month==='all'){
     const l1=SLEEP_LIMIT,l2=new Date(refT-730*864e5).toISOString().slice(0,10);
     if(FIRST.slice(0,10)>l2)return {rolling:true,cur:D.orders.filter(o=>o.d>l1),prev:null};
@@ -2139,7 +2179,7 @@ const CODEGRP=[['none','Sans code'],['promo','Code promo'],['fid','Points fidél
 
 function renderGraphiques(){
   const el=document.getElementById('p-graphiques'),ords=F();
-  if(!ords.length){el.innerHTML='<div class="empty">Aucune commande sur cette période. Choisissez une autre année ou un autre mois.</div>';return}
+  if(!ords.length){el.innerHTML='<div class="empty">Aucune commande sur cette période. Choisissez une autre période.</div>';return}
   if(!FIRSTA)firstOrders();
   const ca=ords.reduce((s,o)=>s+o.t,0),A=agAgg(ords);
   const C=cmpPeriod(),K=kpiVals(ords);
@@ -2340,7 +2380,7 @@ function drawTrendProducts(){
 }
 
 /* ---------- v3 : objectifs ---------- */
-function goalYear(){return S.year!=='all'?+S.year:+LAST.slice(0,4)}
+function goalYear(){return hasRange()?+rangeBounds()[1].slice(0,4):S.year!=='all'?+S.year:+LAST.slice(0,4)}
 function goalsBoxHTML(){
   const y=goalYear(),g=(SETTINGS.goals||{})[y]||{},ords=D.orders.filter(o=>o.y===y);
   const real={ca:ords.reduce((s,o)=>s+o.t,0),cmd:ords.length,ag:new Set(ords.map(o=>o.a)).size};
