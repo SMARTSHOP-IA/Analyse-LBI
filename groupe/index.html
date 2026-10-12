@@ -135,8 +135,9 @@ a.lnk:hover{text-decoration:underline}
 <script>
 /* ===== Clients à consolider : un objet par réseau (prefix = préfixe des collections Firebase) ===== */
 const CLIENTS=[
-  {prefix:'interkab',name:'Interkab',url:'https://smartshop-ia.github.io/Analyse-LBI/'}
-  /* exemple pour un nouveau client : {prefix:'orpi',name:'Orpi',url:'https://smartshop-ia.github.io/etude-commandes-orpi/'} */
+  {prefix:'interkab',name:'Interkab',url:'https://smartshop-ia.github.io/Analyse-LBI/',commission:0.09,commissionPromo:0.045}
+  /* exemple pour un nouveau client : {prefix:'orpi',name:'Orpi',url:'https://smartshop-ia.github.io/etude-commandes-orpi/'}
+     commission / commissionPromo : taux par défaut si l'outil du réseau n'en a pas enregistré (commissionPromo = taux si la commande a un code promo) */
 ];
 </script>
 <script>
@@ -163,8 +164,13 @@ function normalize(c,base,ds,settings){
   orders.sort((a,b)=>a.d<b.d?-1:1);
   const network=base&&base.network?base.network.length:0;
   return {...c,orders,products,network,penOK:!ds&&!!(base&&base.agnet),commission:settings&&settings.commission?+settings.commission.rate||0:(c.commission||0),commBase:settings&&settings.commission?settings.commission.base:'net',
+    commPromo:(v=>v==null||v===''||!isFinite(+v)?null:+v)(settings&&settings.commission&&settings.commission.promoRate!==undefined&&settings.commission.promoRate!==null?settings.commission.promoRate:c.commissionPromo),
+    commScope:settings&&settings.commission&&settings.commission.promoScope||'promo',
     first:orders.length?orders[0].d:'',last:orders.length?orders[orders.length-1].d:''};
 }
+/* même règle que l'outil : taux réduit si la commande porte un code promo ; « smart points » = fidélité, « sav… » ou numérique = geste commercial */
+const codeType=k=>k==='smart points'?'fid':/^sav|^\d+$/.test(k)?'sav':'promo';
+const commRateOf=(c,o)=>c.commPromo!=null&&(o.c||[]).some(x=>c.commScope==='any'||codeType(x[0])==='promo')?c.commPromo:c.commission;
 function kpis(c,ords){
   if(!ords.length)return null;
   const ca=ords.reduce((s,o)=>s+o.t,0),rem=ords.reduce((s,o)=>s+(o.r||0),0),ag=new Set(ords.map(o=>o.a)).size;
@@ -172,7 +178,7 @@ function kpis(c,ords){
   const top=[...cats].sort((a,b)=>b[1]-a[1])[0];
   const ship=ords.reduce((s,o)=>s+(o.s||0),0);
   return {cmd:ords.length,ca,net:ca-rem,basket:ca/ords.length,ag,prod:new Set(ords.flatMap(o=>o.i.map(x=>x[0]))).size,code:ords.filter(o=>o.c.length).length/ords.length,
-    topCat:top?top[0]+' ('+pct(top[1]/ords.length)+')':'–',penN:new Set(ords.filter(o=>o.m).map(o=>o.a)).size,comm:(c.commBase==='brut'?ca:ca-rem)*c.commission,ship};
+    topCat:top?top[0]+' ('+pct(top[1]/ords.length)+')':'–',penN:new Set(ords.filter(o=>o.m).map(o=>o.a)).size,comm:ords.reduce((s,o)=>s+(c.commBase==='brut'?o.t:Math.max(0,o.t-(o.r||0)))*commRateOf(c,o),0),ship};
 }
 const LAST=()=>DATA.reduce((m,c)=>c.last>m?c.last:m,'');
 function filt(c){return S.year==='all'?c.orders:c.orders.filter(o=>o.y==S.year)}

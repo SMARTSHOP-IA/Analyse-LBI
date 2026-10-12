@@ -6,6 +6,7 @@
 <title>Smartshop – Étude des commandes Interkab</title>
 <meta name="ss-client" content="Interkab">
 <meta name="ss-commission" content="0.09">
+<meta name="ss-commission-promo" content="0.045">
 <meta name="ss-prefix" content="interkab">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -835,9 +836,20 @@ const COMM_META=+((document.querySelector('meta[name="ss-commission"]')||{}).con
 let SETTINGS={commission:{rate:COMM_META,base:'net'},goals:{}};
 if(D.settings)SETTINGS=Object.assign({},SETTINGS,D.settings);
 const commRate=()=>+(SETTINGS.commission&&SETTINGS.commission.rate)||0;
+/* taux réduit si la commande porte un code promo (vide = même taux) ; « promo » = codes promo seulement, « any » = tout code */
+const COMM_PROMO_META=(m=>m&&m.content!==''?+m.content:null)(document.querySelector('meta[name="ss-commission-promo"]'));
+/* promoRate absent = jamais réglé (taux par défaut du fichier) ; '' = vidé volontairement (même taux pour toutes les commandes) */
+const commPromoRate=()=>{const c=SETTINGS.commission||{};const v=c.promoRate===''?null:c.promoRate!=null?+c.promoRate:COMM_PROMO_META;return v==null||!isFinite(v)?commRate():v};
+const commPromoScope=()=>(SETTINGS.commission&&SETTINGS.commission.promoScope)||'promo';
+const hasReduced=()=>commPromoRate()!==commRate();
+const commPromoOrder=o=>o.c&&o.c.some(c=>commPromoScope()==='any'||codeType(c[0])==='promo');
+const commRateOf=o=>hasReduced()&&commPromoOrder(o)?commPromoRate():commRate();
 /* base de commission : CA HT produits uniquement (o.t), jamais les frais de port (o.s) */
 const commBase=o=>SETTINGS.commission&&SETTINGS.commission.base==='brut'?o.t:Math.max(0,o.t-(o.r||0));
-const commOf=ords=>ords.reduce((s,o)=>s+commBase(o),0)*commRate();
+const commOf=ords=>ords.reduce((s,o)=>s+commBase(o)*commRateOf(o),0);
+const commSplit=ords=>{const p=ords.filter(o=>hasReduced()&&commPromoOrder(o));return {n:p.length,comm:p.reduce((s,o)=>s+commBase(o)*commPromoRate(),0)}};
+const commScopeLbl=()=>commPromoScope()==='any'?'avec un code (promo, fidélité ou geste)':'avec un code promo';
+const commRuleLbl=()=>pctLbl(commRate())+(hasReduced()?' ('+pctLbl(commPromoRate())+' '+commScopeLbl().replace(/^avec/,'si')+')':'')+' du CA HT '+(SETTINGS.commission.base==='brut'?'avant':'après')+' remises, hors frais de port';
 const hasShip=()=>D.orders.some(o=>o.s>0);
 const shipOf=ords=>{let n=0,t=0;for(const o of ords){if(o.s>0){n++;t+=o.s}}return {n,t}};
 const pctLbl=r=>nf1.format(r*100).replace(/,0$/,'')+' %';
@@ -1917,7 +1929,7 @@ function drawUpdHome(msg){
   <div class="upd-grid">${Object.entries(KINDS).map(([k,K])=>{const m=D.meta[K.meta];return `<div class="upd-item${k==='annuaire'?' net-only':''}"><h3>${K.title}</h3><p class="muted">${K.desc}<br>Actuel : ${esc(m.file)}, ${fd(m.date)}, ${nf.format(m.count)} ${K.unit}.</p>
     <button class="btn primary" data-pick="${k}">${K.btn}</button><input type="file" accept="${K.accept}" id="f-${k}" hidden>${k==='orders'&&syncUrl()?` <button class="btn" id="updSync" title="Lit toutes les commandes de la boutique WooCommerce et remplace le jeu de données, avec sauvegarde de la version précédente">Mettre à jour depuis WooCommerce</button>`:''}
     ${SRC[K.src]?`<br><button class="btn link" data-reset="${k}">Revenir au fichier d'origine</button>`:''}</div>`}).join('')}</div>
-  <div class="upd-item" style="margin-top:4px"><h3>Objectifs et commission</h3><p class="muted">Objectifs annuels de CA, de commandes et d'agences ; taux de commission reversée au réseau (actuellement ${commRate()>0?pctLbl(commRate()):'aucune'}).</p><button class="btn" id="updGoals">Modifier</button></div>
+  <div class="upd-item" style="margin-top:4px"><h3>Objectifs et commission</h3><p class="muted">Objectifs annuels de CA, de commandes et d'agences ; taux de commission reversée au réseau (actuellement ${commRate()>0?pctLbl(commRate())+(hasReduced()?', '+pctLbl(commPromoRate())+' '+commScopeLbl().replace(/^avec/,'si'):''):'aucune'}).</p><button class="btn" id="updGoals">Modifier</button></div>
   <h3 style="margin:22px 0 8px">Historique des sauvegardes</h3><div id="histBox"><p class="note">Chargement…</p></div>
   <div style="text-align:right;margin-top:16px"><button class="btn" id="updClose">Fermer</button></div>`;
   card.querySelector('#updClose').onclick=closeModal;
@@ -2141,7 +2153,7 @@ function kpiVals(ords){
   const gaps=[];A.forEach(a=>{const ds=a.orders.map(o=>o.d).sort();for(let i=1;i<ds.length;i++)gaps.push((new Date(ds[i].slice(0,10))-new Date(ds[i-1].slice(0,10)))/864e5)});
   const byCa=A.map(a=>a.ca).sort((x,y)=>y-x),k=Math.max(1,Math.ceil(A.length*.2));
   const ship=shipOf(ords);
-  const v={cmd:ords.length,ca,basket:ca/ords.length,ag:A.length,net:ords.reduce((s,o)=>s+o.t-(o.r||0),0),comm:commOf(ords),shipN:ship.n,shipT:ship.t,codeShare:ords.filter(o=>o.c.length).length/ords.length,
+  const v={cmd:ords.length,ca,basket:ca/ords.length,ag:A.length,net:ords.reduce((s,o)=>s+o.t-(o.r||0),0),comm:commOf(ords),...(sp=>({commPN:sp.n,commP:sp.comm}))(commSplit(ords)),shipN:ship.n,shipT:ship.t,codeShare:ords.filter(o=>o.c.length).length/ords.length,
     newAg:A.filter(a=>ns.has(FIRSTA.get(a.i))).length,
     gap:median(gaps),ppo:ords.reduce((s,o)=>s+new Set(o.i.map(x=>x[0])).size,0)/ords.length,
     top20:byCa.slice(0,k).reduce((s,x)=>s+x,0)/(ca||1),A};
@@ -2165,7 +2177,7 @@ const KDEF=[
   {k:'cmd',l:'commandes',f:v=>nf.format(v)},
   {k:'ca',l:'CA HT produits',f:v=>eur.format(v)},
   {k:'net',l:'CA HT après remises',f:v=>eur.format(v)},
-  {k:'comm',l:'commissions reversées',f:v=>eur.format(v),when:()=>commRate()>0,sub:K=>pctLbl(commRate())+' du CA HT '+(SETTINGS.commission.base==='brut'?'avant':'après')+' remises, hors frais de port'},
+  {k:'comm',l:'commissions reversées',f:v=>eur.format(v),when:()=>commRate()>0,sub:K=>commRuleLbl()+(hasReduced()?'<br>'+nf.format(K.commPN)+' commande'+(K.commPN>1?'s':'')+' '+commScopeLbl()+' : '+eur.format(K.commP):'')},
   {k:'shipT',l:'frais de port facturés',f:v=>eur.format(v),when:()=>hasShip(),sub:K=>nf.format(K.shipN)+' commandes avec frais de port ('+pct(K.shipN/K.cmd)+')'},
   {k:'basket',l:'panier moyen HT',f:v=>eur.format(v)},
   {k:'ag',l:'agences clientes',f:v=>nf.format(v)},
@@ -2434,8 +2446,10 @@ function openGoals(){
     <label>Agences clientes<input type="number" min="0" step="1" data-g="${y}.ag" value="${g[y]&&g[y].ag||''}"></label></div>`).join('')}
   <h3 style="margin:16px 0 4px">Commission reversée au réseau</h3><div class="form-grid" style="margin-top:4px">
     <label>Taux (%)<input type="number" min="0" max="100" step="0.1" id="gComm" value="${c.rate?Math.round(c.rate*10000)/100:''}"></label>
-    <label>Calculée sur<select id="gBase"><option value="net" ${c.base!=='brut'?'selected':''}>CA HT après remises</option><option value="brut" ${c.base==='brut'?'selected':''}>CA HT avant remises</option></select></label></div>
-  <p class="note">La commission est toujours calculée sur le CA HT des produits : les frais de port en sont exclus.</p>
+    <label>Calculée sur<select id="gBase"><option value="net" ${c.base!=='brut'?'selected':''}>CA HT après remises</option><option value="brut" ${c.base==='brut'?'selected':''}>CA HT avant remises</option></select></label>
+    <label>Taux si la commande a un code (%)<input type="number" min="0" max="100" step="0.1" id="gCommP" placeholder="même taux" value="${hasReduced()?Math.round(commPromoRate()*10000)/100:''}"></label>
+    <label>Codes concernés<select id="gScope"><option value="promo" ${commPromoScope()!=='any'?'selected':''}>Codes promo uniquement</option><option value="any" ${commPromoScope()==='any'?'selected':''}>Tous les codes (y compris points fidélité et gestes commerciaux)</option></select></label></div>
+  <p class="note">La commission est toujours calculée sur le CA HT des produits : les frais de port en sont exclus. Laissez le taux « si code » vide pour appliquer le même taux à toutes les commandes.</p>
   <h3 style="margin:16px 0 4px">Synchronisation WooCommerce</h3><div class="form-grid" style="margin-top:4px;grid-template-columns:1fr">
     <label>Adresse du service de synchronisation (Railway), vide si non utilisé<input type="url" id="gSync" placeholder="https://….up.railway.app" value="${esc(SETTINGS.syncUrl||'')}" style="border:0;background:var(--paper);box-shadow:var(--inset-sm);border-radius:12px;padding:9px 12px;font-weight:700;color:var(--ink);width:100%"></label></div>
   <p class="note" id="gMsg"></p>
@@ -2443,7 +2457,8 @@ function openGoals(){
   card.querySelector('#gCancel').onclick=closeModal;
   card.querySelector('#gSave').onclick=async()=>{
     const goals={};card.querySelectorAll('[data-g]').forEach(i=>{const [y,k]=i.dataset.g.split('.');const v=+i.value;if(v>0){goals[y]=goals[y]||{};goals[y][k]=v}});
-    const next={commission:{rate:(+card.querySelector('#gComm').value||0)/100,base:card.querySelector('#gBase').value},goals,clientKey:SETTINGS.clientKey,clientPublished:SETTINGS.clientPublished,syncUrl:(card.querySelector('#gSync').value||'').trim()};
+    const pv=card.querySelector('#gCommP').value.trim();
+    const next={commission:{rate:(+card.querySelector('#gComm').value||0)/100,base:card.querySelector('#gBase').value,promoRate:pv===''?'':(+pv||0)/100,promoScope:card.querySelector('#gScope').value},goals,clientKey:SETTINGS.clientKey,clientPublished:SETTINGS.clientPublished,syncUrl:(card.querySelector('#gSync').value||'').trim()};
     const btn=card.querySelector('#gSave'),msg=card.querySelector('#gMsg');btn.disabled=true;msg.textContent='Enregistrement…';
     try{if(UPD.db)await saveDoc('settings',next);SETTINGS=next;SRC.settings=next;closeModal();render();publishClient(true);toast('Objectifs et commission enregistrés.')}
     catch(e){msg.textContent='Enregistrement impossible : '+(e.message||e.code||'erreur');msg.className='err';btn.disabled=false}
@@ -2518,7 +2533,7 @@ function renderRapport(){
     <div class="rp-head">${logo?logo.outerHTML:''}<div class="rp-title"><h2>${esc(CLIENT)} · ${MOISL[m-1]} ${y}</h2><div>Étude des commandes · rapport mensuel · édité le ${fd(today())}</div></div></div>
     ${!K?'<div class="empty">Aucune commande ce mois-ci.</div>':`
     <div class="rp-kpis">${kpi('commandes','cmd',v=>nf.format(v))}${kpi('CA HT produits','ca',v=>eur.format(v))}${kpi('panier moyen HT','basket',v=>eur.format(v))}${kpi('agences clientes','ag',v=>nf.format(v))}${kpi('nouvelles agences','newAg',v=>nf.format(v))}
-      ${commRate()>0?`<div class="rp-kpi"><b>${eur.format(comm)}</b><span>commissions reversées (${pctLbl(commRate())})</span></div>`:''}${hasShip()?`<div class="rp-kpi"><b>${eur.format(ship.t)}</b><span>frais de port facturés</span><small>${nf.format(ship.n)} commandes</small></div>`:''}</div>
+      ${commRate()>0?`<div class="rp-kpi"><b>${eur.format(comm)}</b><span>commissions reversées (${pctLbl(commRate())}${hasReduced()?', '+pctLbl(commPromoRate())+' '+commScopeLbl().replace(/^avec/,'si'):''})</span>${hasReduced()?`<small>${nf.format(commSplit(O).n)} commandes au taux réduit</small>`:''}</div>`:''}${hasShip()?`<div class="rp-kpi"><b>${eur.format(ship.t)}</b><span>frais de port facturés</span><small>${nf.format(ship.n)} commandes</small></div>`:''}</div>
     <div class="rp-sec"><h3>Depuis le début de l'année</h3><div class="rp-kpis">
       <div class="rp-kpi"><b>${nf.format(KY.cmd)}</b><span>commandes de janvier à ${MOISL[m-1].toLowerCase()}</span>${dl(KY.cmd,KYL&&KYL.cmd,'vs '+(y-1))}</div>
       <div class="rp-kpi"><b>${eur.format(KY.ca)}</b><span>CA HT produits</span>${dl(KY.ca,KYL&&KYL.ca,'vs '+(y-1))}</div>
@@ -2844,7 +2859,7 @@ function answer(raw){
   /* pénétration */
   if(/penetration|annuaire|ik solutions|membres|programme/.test(q)){if(!hasNet())return {html:'Aucun annuaire de réseau n\'est intégré pour ce client.'};const K=kpiVals(O);return {html:`Taux de pénétration sur ${esc(per)} : <b>${pct(K.pen)}</b> (${nf.format(K.penN)} agences de l'annuaire sur ${nf.format(D.network.length)} ont commandé).`,go:goSec('agences','reseau','Voir le programme')}}
   /* commissions, frais de port */
-  if(/commission/.test(q)){if(!commRate())return {html:'Aucun taux de commission n\'est défini. Un editor peut le saisir dans « Mettre à jour les données » → « Objectifs et commission ».'};return {html:`Commissions reversées sur ${esc(per)} : <b>${eur.format(commOf(O))}</b>, soit ${pctLbl(commRate())} du CA HT ${SETTINGS.commission.base==='brut'?'avant':'après'} remises, hors frais de port.`}}
+  if(/commission/.test(q)){if(!commRate())return {html:'Aucun taux de commission n\'est défini. Un editor peut le saisir dans « Mettre à jour les données » → « Objectifs et commission ».'};const sp=commSplit(O);return {html:`Commissions reversées sur ${esc(per)} : <b>${eur.format(commOf(O))}</b>, soit ${esc(commRuleLbl())}.${hasReduced()?` Dont ${nf.format(sp.n)} commande${sp.n>1?'s':''} ${commScopeLbl()} au taux de ${pctLbl(commPromoRate())} (${eur.format(sp.comm)}) et ${nf.format(O.length-sp.n)} au taux de ${pctLbl(commRate())} (${eur.format(commOf(O)-sp.comm)}).`:''}`}}
   if(/frais de port|livraison|port\b|expedition/.test(q)){if(!hasShip())return {html:'Les frais de port ne figurent pas dans l\'export des commandes actuel. Ajoutez une colonne « Frais de port HT » à l\'export : ils seront lus au prochain import.'};const s=shipOf(O);return {html:`Frais de port sur ${esc(per)} : <b>${eur.format(s.t)}</b> facturés sur ${plural(s.n,'commande','commandes')} (${pct(s.n/O.length)} des commandes). Ils ne sont pas comptés dans le CA produits.`}}
   /* objectifs */
   if(/objectif|cible|avancement/.test(q)){const y=goalYear(),g=(SETTINGS.goals||{})[y];if(!g)return {html:`Aucun objectif n'est défini pour ${y}.`};const oy=D.orders.filter(o=>o.y===y),ca=oy.reduce((s,o)=>s+o.t,0);
