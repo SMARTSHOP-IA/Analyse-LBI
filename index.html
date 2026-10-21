@@ -569,6 +569,17 @@ table.cmp .up{color:var(--g4);font-weight:800}table.cmp .down{color:var(--brick)
 @media (max-width:1100px){.kgroup .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){.kgroup{margin-bottom:18px}.kg-head h3{font-size:16px}.kgroup .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media print{.kgroup{break-inside:avoid}}
+
+.kpi.kpair{grid-column:span 2;padding:0;display:flex;flex-direction:column}
+.kpair .kp-top{display:grid;grid-template-columns:1fr 1fr;flex:1}
+.kpair .kp-cell{padding:16px 18px 14px;min-width:0}
+.kpair .kp-cell+.kp-cell{border-left:1px dashed var(--line-strong)}
+.kpair .kp-sum{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;padding:12px 18px 13px;background:var(--paper);box-shadow:var(--inset-sm);border-radius:0 0 var(--r-sm) var(--r-sm)}
+.kpair .kp-sum span{margin:0;font-weight:700;color:var(--ink);font-size:13px}
+.kpair .kp-sum b{margin:0;font-size:clamp(19px,1.7vw,23px)}
+.kpair .kp-sum small{margin:0;flex-basis:100%}
+.kpair .kp-op{color:var(--muted);font-weight:900;margin-right:2px}
+@media (max-width:760px){.kpair .kp-cell{padding:14px 12px 12px}.kpair .kp-sum{padding:11px 12px}}
 </style>
 <meta name="robots" content="noindex,nofollow">
 </head>
@@ -2153,7 +2164,7 @@ function kpiVals(ords){
   const gaps=[];A.forEach(a=>{const ds=a.orders.map(o=>o.d).sort();for(let i=1;i<ds.length;i++)gaps.push((new Date(ds[i].slice(0,10))-new Date(ds[i-1].slice(0,10)))/864e5)});
   const byCa=A.map(a=>a.ca).sort((x,y)=>y-x),k=Math.max(1,Math.ceil(A.length*.2));
   const ship=shipOf(ords);
-  const v={cmd:ords.length,ca,basket:ca/ords.length,ag:A.length,net:ords.reduce((s,o)=>s+o.t-(o.r||0),0),comm:commOf(ords),...(sp=>({commPN:sp.n,commP:sp.comm}))(commSplit(ords)),shipN:ship.n,shipT:ship.t,codeShare:ords.filter(o=>o.c.length).length/ords.length,
+  const v={cmd:ords.length,ca,basket:ca/ords.length,ag:A.length,net:ords.reduce((s,o)=>s+o.t-(o.r||0),0),comm:commOf(ords),...(sp=>({commPN:sp.n,commP:sp.comm}))(commSplit(ords)),shipN:ship.n,shipT:ship.t,caShip:ca+ship.t,codeShare:ords.filter(o=>o.c.length).length/ords.length,
     newAg:A.filter(a=>ns.has(FIRSTA.get(a.i))).length,
     gap:median(gaps),ppo:ords.reduce((s,o)=>s+new Set(o.i.map(x=>x[0])).size,0)/ords.length,
     top20:byCa.slice(0,k).reduce((s,x)=>s+x,0)/(ca||1),A};
@@ -2163,15 +2174,15 @@ function kpiVals(ords){
 
 /* ---------- v9 : KPI en 4 blocs ---------- */
 const KGROUPS=[
-  {id:'ca',t:'Chiffre d\'affaires',s:'ce que ça rapporte',keys:['ca','net','comm','shipT']},
+  {id:'ca',t:'Chiffre d\'affaires',s:'ce que ça rapporte',keys:['caShip','ca','shipT','net','comm']},
   {id:'cmd',t:'Commandes',s:'comment on achète',keys:['cmd','basket','ppo']},
   {id:'ag',t:'Agences',s:'qui achète',keys:['ag','newAg','pen','gap']},
   {id:'sig',t:'Concentration & catalogue',s:'signaux à surveiller',keys:['top20','cat']}
 ];
 const KICONS={"ca": "<svg viewBox=\"0 0 24 24\"><path d=\"M17 6.5a6 6 0 1 0 0 11\"/><path d=\"M5 10.5h10M5 13.5h10\"/></svg>", "cmd": "<svg viewBox=\"0 0 24 24\"><path d=\"M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.9a1 1 0 0 0 1-.8L20 8H6.2\"/><circle cx=\"9.5\" cy=\"20\" r=\"1.3\"/><circle cx=\"17\" cy=\"20\" r=\"1.3\"/></svg>", "ag": "<svg viewBox=\"0 0 24 24\"><path d=\"M12 21s-6-5.3-6-11a6 6 0 1 1 12 0c0 5.7-6 11-6 11z\"/><circle cx=\"12\" cy=\"10\" r=\"2.3\"/></svg>", "sig": "<svg viewBox=\"0 0 24 24\"><path d=\"M4 19h16\"/><path d=\"M5 15l4-5 3 3 4-6 3 3\"/></svg>"};
 function kpiGroupsHTML(cardMap){
-  return KGROUPS.map(g=>{const cs=g.keys.map(k=>cardMap[k]).filter(Boolean);if(!cs.length)return '';
-    return `<section class="kgroup kg-${g.id}" aria-label="${esc(g.t)}"><div class="kg-head"><span class="kg-ico" aria-hidden="true">${KICONS[g.id]}</span><h3>${g.t}</h3><span class="kg-sub">${g.s}</span></div><div class="kpis" style="--n:${cs.length}">${cs.join('')}</div></section>`}).join('');
+  return KGROUPS.map(g=>{const cs=g.keys.map(k=>cardMap[k]).filter(Boolean);if(!cs.length)return '';const span=cs.length+cs.filter(c=>c.includes('kpair')).length;
+    return `<section class="kgroup kg-${g.id}" aria-label="${esc(g.t)}"><div class="kg-head"><span class="kg-ico" aria-hidden="true">${KICONS[g.id]}</span><h3>${g.t}</h3><span class="kg-sub">${g.s}</span></div><div class="kpis" style="--n:${span}">${cs.join('')}</div></section>`}).join('');
 }
 const KDEF=[
   {k:'cmd',l:'commandes',f:v=>nf.format(v)},
@@ -2222,12 +2233,21 @@ function renderGraphiques(){
   const ca=ords.reduce((s,o)=>s+o.t,0),A=agAgg(ords);
   const C=cmpPeriod(),K=kpiVals(ords);
   const KC=C&&C.rolling?kpiVals(C.cur):null,KP=C&&C.prev&&C.prev.length?kpiVals(C.prev):null;
-  const cardMap={};KDEF.filter(d=>!(d.net&&!hasNet())&&!(d.when&&!d.when())).forEach(d=>{
+  const cmpExtra=d=>{let extra='';
+    if(C&&C.rolling){if(KC){const dl=KP?deltaHTML(d,KC[d.k],KP[d.k],''):'';extra+=`<small title="12 derniers mois, comparés aux 12 mois précédents">12 derniers mois : <b style="font-size:12px;display:inline;margin:0">${d.f(KC[d.k])}</b> ${dl.replace('<small class="dl','<span class="dl').replace('</small>','</span>')}</small>`}}
+    else if(KP)extra+=deltaHTML(d,K[d.k],KP[d.k],C.vs);return extra};
+  const cardMap={},cardIn={};KDEF.filter(d=>!(d.net&&!hasNet())&&!(d.when&&!d.when())).forEach(d=>{
     let extra=d.sub?`<small>${d.sub(K)}</small>`:'';
     if(C&&C.rolling){if(KC){const dl=KP?deltaHTML(d,KC[d.k],KP[d.k],''):'';extra+=`<small title="12 derniers mois, comparés aux 12 mois précédents">12 derniers mois : <b style="font-size:12px;display:inline;margin:0">${d.f(KC[d.k])}</b> ${dl.replace('<small class="dl','<span class="dl').replace('</small>','</span>')}</small>`}}
     else if(KP)extra+=deltaHTML(d,K[d.k],KP[d.k],C.vs);
     if(d.k==='pen')extra=`<small>${nf.format(K.penN)} sur ${nf.format(D.network.length)} agences</small>`+extra;
-    cardMap[d.k]=`<div class="kpi"${d.tip?` title="${esc(d.tip)}"`:''}><b>${d.f(K[d.k])}</b><span>${d.l}</span>${extra}</div>`});
+    cardIn[d.k]=`<b>${d.f(K[d.k])}</b><span>${d.l}</span>${extra}`;
+    cardMap[d.k]=`<div class="kpi"${d.tip?` title="${esc(d.tip)}"`:''}>${cardIn[d.k]}</div>`});
+  /* CA produits + frais de port réunis, total en bas */
+  if(cardIn.ca&&cardIn.shipT){const dT={k:'caShip',f:v=>eur.format(v)};
+    cardMap.caShip=`<div class="kpi kpair" title="CA HT des produits et frais de port HT facturés : le total correspond au montant HT encaissé avant remises."><div class="kp-top"><div class="kp-cell">${cardIn.ca}</div><div class="kp-cell">${cardIn.shipT}</div></div>
+      <div class="kp-sum"><span>Total CA HT + frais de port</span><b>${eur.format(K.caShip)}</b>${cmpExtra(dT)}</div></div>`;
+    delete cardMap.ca;delete cardMap.shipT}
   /* catalogue en ligne vendu sur les 12 derniers mois */
   let catCard='';
   if(hasCat()){const sold=new Set();D.orders.forEach(o=>{if(o.d>SLEEP_LIMIT)o.i.forEach(([p])=>{const c=D.products[p][3];if(c>=0)sold.add(c)})});
