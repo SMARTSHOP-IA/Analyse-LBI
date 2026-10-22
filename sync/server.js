@@ -11,6 +11,8 @@
      WC_<PREFIXE>_SECRET        consumer secret
      WC_<PREFIXE>_SINCE         première date à récupérer (ex. 2023-10-01)
      WC_<PREFIXE>_STATUSES      statuts comptés (défaut : completed,processing)
+     WC_<PREFIXE>_AGENCY        regroupement des commandes : "societe" (défaut, société de facturation) ou "email"
+                                (une agence = une personne, libellé « Prénom NOM (Ville) », ex. réseau de courtiers CAFPI)
      CRON                       planification optionnelle, ex. "0 5 * * *" (tous les jours à 5 h, heure UTC)
      ALLOWED_ORIGINS            origines autorisées à appeler le service (défaut : https://smartshop-ia.github.io)
      PORT                       fourni par Railway
@@ -65,7 +67,7 @@ const fmtDate = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})
 function shopConfig(prefix) {
   const P = prefix.toUpperCase(), url = env(`WC_${P}_URL`), key = env(`WC_${P}_KEY`), secret = env(`WC_${P}_SECRET`);
   if (!url || !key || !secret) throw new Error(`Configuration WooCommerce manquante pour « ${prefix} » (WC_${P}_URL / KEY / SECRET).`);
-  return { url: url.replace(/\/wp-admin\/?$/, '').replace(/\/$/, ''), key, secret, since: env(`WC_${P}_SINCE`, '2023-10-01'), statuses: env(`WC_${P}_STATUSES`, 'completed,processing') };
+  return { url: url.replace(/\/wp-admin\/?$/, '').replace(/\/$/, ''), key, secret, since: env(`WC_${P}_SINCE`, '2023-10-01'), statuses: env(`WC_${P}_STATUSES`, 'completed,processing'), agency: env(`WC_${P}_AGENCY`, 'societe').toLowerCase() };
 }
 async function wcGetAll(cfg, path, params = {}) {
   const out = []; let page = 1;
@@ -93,7 +95,14 @@ async function fetchShop(cfg) {
 }
 
 /* ---------- transformation au format de l'outil ---------- */
-function buildDataset(prefix, { orders, prodCats }, prevProducts) {
+// mode « email » : libellé d'un courtier, même règle que preparer_outil.py
+const courtierLabel = (first, last, city, email) => {
+  const name = (titleCase(decode(first).trim()) + ' ' + decode(last).trim().toUpperCase()).replace(/\s+/g, ' ').trim() || String(email).split('@')[0];
+  const c = decode(city).replace(/^\d{4,5}\s*-?\s*/, '').trim();
+  return name + (c ? ' (' + titleCase(c) + ')' : '');
+};
+function buildDataset(prefix, { orders, prodCats }, prevProducts, agency = 'societe') {
+  const keyed = [];
   const prodList = [], pidx = new Map(), prodCatCount = new Map(), out = [];
   // noms déjà connus dans l'outil : on les retrouve même si l'API les écrit un peu différemment (espaces, accents, guillemets)
   const prevByKey = new Map((prevProducts || []).map(p => [normKey(p[0]), p[0]]));
@@ -113,10 +122,19 @@ function buildDataset(prefix, { orders, prodCats }, prevProducts) {
     const t = r2(items.reduce((s, i) => s + i[2], 0));
     const codes = (o.coupon_lines || []).filter(c => c.code).map(c => [String(c.code).trim().toLowerCase(), r2(c.discount)]);
     out.push([n, fmtDate(o.date_created), t, r2(o.total), r2(o.discount_total), codes, items, depOf(cp), cp, titleCase(decode(ship.city || bill.city || '').trim()), soc, r2(o.shipping_total)]);
+    const mail = String(bill.email || '').trim().toLowerCase() || soc;
+    keyed.push([mail, courtierLabel(bill.first_name, bill.last_name, ship.city || bill.city, mail)]);
+  }
+  if (agency === 'email') {
+    // le libellé retenu pour une personne est celui de sa commande la plus récente
+    const last = new Map(); out.map((o, k) => [o[1], k]).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0).forEach(([, k]) => last.set(keyed[k][0], keyed[k][1]));
+    out.forEach((o, k) => { o[10] = last.get(keyed[k][0]); });
   }
   const prev = new Map((prevProducts || []).map(p => [p[0], p]));
-  const products = prodList.map((name, p) => { const pv = prev.get(name); if (pv) return [name, pv[1], pv[2]];
-    const m = prodCatCount.get(p); const best = m ? [...m].sort((a, b) => b[1] - a[1])[0][0].split('|') : ['Non renseignée', '']; return [name, best[0], best[1]]; });
+  const products = prodList.map((name, p) => {
+    const m = prodCatCount.get(p); const best = m ? [...m].sort((a, b) => b[1] - a[1])[0][0].split('|') : ['Non renseignée', ''];
+    const pv = prev.get(name); if (pv && pv[1] && pv[1] !== 'Non renseignée') return [name, pv[1], pv[2]];
+    return [name, best[0], best[1]]; });
   const unknown = prodList.filter(n => !prev.has(n));
   return { orders: out.filter(o => o[1]), products, unknown };
 }
@@ -156,7 +174,7 @@ async function syncClient(prefix, by = 'synchronisation automatique') {
     const shop = await fetchShop(cfg);
     const base = await readBase(prefix), prevMeta = await readJson(prefix, 'datasets/commandes');
     const prevProducts = prevMeta ? prevMeta.products : (base ? base.products : []);
-    const ds = buildDataset(prefix, shop, prevProducts);
+    const ds = buildDataset(prefix, shop, prevProducts, cfg.agency);
     if (!ds.orders.length) throw new Error('Aucune commande renvoyée par WooCommerce : rien n\'a été modifié.');
     const today = new Date().toISOString().slice(0, 10);
     const prevCount = prevMeta ? prevMeta.count : (base ? base.orders.length : 0);

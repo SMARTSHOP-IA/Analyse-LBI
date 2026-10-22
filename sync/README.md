@@ -33,21 +33,31 @@ Les clés (WooCommerce et Firebase) restent sur le serveur : elles ne sont jamai
 
 Vérification : ouvrir l'adresse du service dans un navigateur ; elle répond `{"service":"smartshop-sync-woocommerce", …}`.
 
-## Ajouter un réseau (ex. Orpi)
+## Ajouter un réseau (ex. CAFPI)
 
-Ajouter `orpi` dans `CLIENTS` et les variables `WC_ORPI_URL`, `WC_ORPI_KEY`, `WC_ORPI_SECRET`,
-`WC_ORPI_SINCE`, `WC_ORPI_STATUSES`. Le préfixe doit être celui des collections Firebase de l'outil
-(`orpi_datasets`, …).
+Ajouter le préfixe dans `CLIENTS` (ex. `interkab,cafpi`) et les variables `WC_CAFPI_URL`, `WC_CAFPI_KEY`,
+`WC_CAFPI_SECRET`, `WC_CAFPI_SINCE`, `WC_CAFPI_STATUSES`, et si besoin `WC_CAFPI_AGENCY`. Le préfixe doit être
+celui des collections Firebase de l'outil (`cafpi_datasets`, …). La variable `CRON` vaut pour tous les réseaux de `CLIENTS`.
+
+`WC_<PREFIXE>_AGENCY` : `societe` (défaut) regroupe les commandes par société de facturation ; `email` regroupe par
+personne (e-mail de facturation), avec le libellé « Prénom NOM (Ville) » de sa commande la plus récente. C'est le
+réglage de CAFPI, dont les commandes sont passées par des courtiers et facturées presque toujours à « CAFPI ».
+
+| Réseau | URL | SINCE | STATUSES | AGENCY |
+|---|---|---|---|---|
+| Interkab | `https://leshop.ma-boite-immo.com` | `2023-10-01` | `completed,processing` | (défaut) |
+| CAFPI | `https://mygoodies.cafpi.fr` | `2025-04-01` | `completed,processing` | `email` |
 
 ## Ce que fait une synchronisation
 
 - Lecture de toutes les commandes aux statuts choisis depuis la date de départ (pas seulement les nouvelles :
   une commande passée en « annulée » ou « remboursée » disparaît ainsi de l'étude).
 - Pour chaque commande : numéro, date, CA HT produits (somme des lignes avant remise), TTC, remise,
-  codes promo, lignes (produit, quantité, HT), code postal et ville de livraison, société de facturation,
+  codes promo, lignes (produit, quantité, HT), code postal et ville de livraison, société de facturation (ou
+  courtier en mode `email`),
   **frais de port HT**.
-- Les produits gardent la famille et la sous-famille déjà connues dans l'outil ; les nouveaux produits sont
-  classés d'après leurs catégories WooCommerce. Le nom utilisé est celui du produit parent, pour que les
+- Les produits gardent la famille et la sous-famille déjà connues dans l'outil ; les nouveaux produits, et ceux
+  dont la famille est « Non renseignée », sont classés d'après leurs catégories WooCommerce. Le nom utilisé est celui du produit parent, pour que les
   déclinaisons (tailles, couleurs) restent regroupées comme dans les exports.
 - Seul un compte de la liste `authorizedUsers` avec le rôle `editor` peut déclencher la synchronisation
   depuis l'outil (jeton de connexion vérifié côté serveur).
