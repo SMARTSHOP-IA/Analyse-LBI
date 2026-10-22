@@ -582,7 +582,7 @@ table.cmp .up{color:var(--g4);font-weight:800}table.cmp .down{color:var(--brick)
 .kpair .kp-op{color:var(--muted);font-weight:900;margin-right:2px}
 @media (max-width:760px){.kpair .kp-cell{padding:14px 12px 12px}.kpair .kp-sum{padding:11px 12px}}
 
-@media (min-width:1001px){.bar .titles.has-logo{display:flex;align-items:center;gap:14px}}
+.bar .titles h1.has-logo{display:flex;align-items:center;gap:16px}
 .client-logo{height:46px;width:auto;max-width:150px;object-fit:contain;flex:none;padding:7px;border-radius:14px;background:var(--surface);box-shadow:var(--raise-sm)}
 .mobile-brand .client-logo{height:36px;padding:5px;border-radius:11px;margin-left:auto}
 </style>
@@ -2683,7 +2683,7 @@ function renderExport(){
 (function(){const m=document.querySelector('meta[name="ss-client-logo"]'),src=m&&m.content.trim();if(!src)return;
   const mk=()=>{const i=document.createElement('img');i.className='client-logo';i.src=src;i.alt='Logo '+CLIENT;i.decoding='async';return i};
   const t=document.querySelector('.bar .titles');
-  if(t&&!t.querySelector('.client-logo')){const w=document.createElement('div');while(t.firstChild)w.appendChild(t.firstChild);t.append(mk(),w);t.classList.add('has-logo')}
+  const h=t&&t.querySelector('h1');if(h&&!h.querySelector('.client-logo')){h.appendChild(mk());h.classList.add('has-logo')}
   const mb=document.querySelector('.mobile-brand');if(mb&&!mb.querySelector('.client-logo'))mb.appendChild(mk());
 })();
 
