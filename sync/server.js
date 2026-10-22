@@ -13,6 +13,13 @@
      WC_<PREFIXE>_STATUSES      statuts comptés (défaut : completed,processing)
      WC_<PREFIXE>_AGENCY        regroupement des commandes : "societe" (défaut, société de facturation) ou "email"
                                 (une agence = une personne, libellé « Prénom NOM (Ville) », ex. réseau de courtiers CAFPI)
+                                ou "livraison" (une agence = la personne du nom de livraison, ex. conseillers Mon Assurance Facile)
+     WC_<PREFIXE>_GENERIC       mode livraison : mots d'un nom générique (ex. "FACILE,MASF"), regroupé par ville de livraison
+     WC_<PREFIXE>_GENERIC_LABEL mode livraison : libellé de ces commandes (ex. "Ma Santé Facile" → « Ma Santé Facile (Lille) »)
+     WC_<PREFIXE>_CATALOGUE     "1" : les produits WooCommerce (publiés et désactivés) deviennent le catalogue de l'outil
+     WC_<PREFIXE>_FAMILIES      JSON {"début de catégorie":"Famille"} (gammes des produits, mode catalogue)
+     WC_<PREFIXE>_REGIONS       JSON {"code en fin de catégorie":"Région"} (sous-gamme = région, mode catalogue)
+     WC_<PREFIXE>_CRON          planification propre à ce réseau (ex. "0 4 * * 1" : chaque lundi) ; il ne suit alors plus CRON
      CRON                       planification optionnelle, ex. "0 5 * * *" (tous les jours à 5 h, heure UTC)
      ALLOWED_ORIGINS            origines autorisées à appeler le service (défaut : https://smartshop-ia.github.io)
      PORT                       fourni par Railway
@@ -20,6 +27,7 @@
 import express from 'express';
 import admin from 'firebase-admin';
 import cron from 'node-cron';
+import { buildCatalogue, renameLines, livraisonKey, pickLabels, parseJson } from './catalogue.js';
 
 const env = (k, d) => (process.env[k] ?? d);
 const CLIENTS = env('CLIENTS', 'interkab').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -67,7 +75,9 @@ const fmtDate = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})
 function shopConfig(prefix) {
   const P = prefix.toUpperCase(), url = env(`WC_${P}_URL`), key = env(`WC_${P}_KEY`), secret = env(`WC_${P}_SECRET`);
   if (!url || !key || !secret) throw new Error(`Configuration WooCommerce manquante pour « ${prefix} » (WC_${P}_URL / KEY / SECRET).`);
-  return { url: url.replace(/\/wp-admin\/?$/, '').replace(/\/$/, ''), key, secret, since: env(`WC_${P}_SINCE`, '2023-10-01'), statuses: env(`WC_${P}_STATUSES`, 'completed,processing'), agency: env(`WC_${P}_AGENCY`, 'societe').toLowerCase() };
+  return { url: url.replace(/\/wp-admin\/?$/, '').replace(/\/$/, ''), key, secret, since: env(`WC_${P}_SINCE`, '2023-10-01'), statuses: env(`WC_${P}_STATUSES`, 'completed,processing'), agency: env(`WC_${P}_AGENCY`, 'societe').toLowerCase(),
+    catalogue: /^(1|true|oui|yes)$/i.test(env(`WC_${P}_CATALOGUE`, '')), families: parseJson(env(`WC_${P}_FAMILIES`, ''), `WC_${P}_FAMILIES`), regions: parseJson(env(`WC_${P}_REGIONS`, ''), `WC_${P}_REGIONS`),
+    generic: env(`WC_${P}_GENERIC`, '').split(',').map(s => s.trim()).filter(Boolean), genericLabel: env(`WC_${P}_GENERIC_LABEL`, '') };
 }
 async function wcGetAll(cfg, path, params = {}) {
   const out = []; let page = 1;
@@ -91,6 +101,12 @@ async function fetchShop(cfg) {
   const catById = new Map(cats.map(c => [c.id, c]));
   const catPath = c => { const p = c.parent && catById.get(c.parent); return p ? p.name + '>' + c.name : c.name; };
   const prodCats = new Map(products.map(p => [p.id, (p.categories || []).map(c => catById.get(c.id) ? catPath(catById.get(c.id)) : c.name).join(', ')]));
+  if (cfg.catalogue) {
+    // catalogue complet (produits publiés et désactivés) ; les commandes prennent le nom actuel des produits
+    const cat = buildCatalogue(products, cats, orders, cfg);
+    renameLines(orders, cat.nameOf);
+    return { orders, prodCats: cat.catOf, catalogue: cat.items };
+  }
   return { orders, prodCats };
 }
 
@@ -101,8 +117,8 @@ const courtierLabel = (first, last, city, email) => {
   const c = decode(city).replace(/^\d{4,5}\s*-?\s*/, '').trim();
   return name + (c ? ' (' + titleCase(c) + ')' : '');
 };
-function buildDataset(prefix, { orders, prodCats }, prevProducts, agency = 'societe') {
-  const keyed = [];
+function buildDataset(prefix, { orders, prodCats }, prevProducts, agency = 'societe', cfg = {}) {
+  const keyed = [], keyedL = [];
   const prodList = [], pidx = new Map(), prodCatCount = new Map(), out = [];
   // noms déjà connus dans l'outil : on les retrouve même si l'API les écrit un peu différemment (espaces, accents, guillemets)
   const prevByKey = new Map((prevProducts || []).map(p => [normKey(p[0]), p[0]]));
@@ -124,6 +140,12 @@ function buildDataset(prefix, { orders, prodCats }, prevProducts, agency = 'soci
     out.push([n, fmtDate(o.date_created), t, r2(o.total), r2(o.discount_total), codes, items, depOf(cp), cp, titleCase(decode(ship.city || bill.city || '').trim()), soc, r2(o.shipping_total)]);
     const mail = String(bill.email || '').trim().toLowerCase() || soc;
     keyed.push([mail, courtierLabel(bill.first_name, bill.last_name, ship.city || bill.city, mail)]);
+    if (agency === 'livraison') keyedL.push(livraisonKey(o, cfg));
+  }
+  if (agency === 'livraison') {
+    // une personne = son nom de livraison (prénom et nom dans n'importe quel ordre, sans accents) ; libellé le plus fréquent
+    const labels = pickLabels(keyedL, out.map(o => o[1]));
+    out.forEach((o, k) => { o[10] = labels[k]; });
   }
   if (agency === 'email') {
     // le libellé retenu pour une personne est celui de sa commande la plus récente
@@ -174,14 +196,15 @@ async function syncClient(prefix, by = 'synchronisation automatique') {
     const shop = await fetchShop(cfg);
     const base = await readBase(prefix), prevMeta = await readJson(prefix, 'datasets/commandes');
     const prevProducts = prevMeta ? prevMeta.products : (base ? base.products : []);
-    const ds = buildDataset(prefix, shop, prevProducts, cfg.agency);
+    const ds = buildDataset(prefix, shop, prevProducts, cfg.agency, cfg);
     if (!ds.orders.length) throw new Error('Aucune commande renvoyée par WooCommerce : rien n\'a été modifié.');
     const today = new Date().toISOString().slice(0, 10);
     const prevCount = prevMeta ? prevMeta.count : (base ? base.orders.length : 0);
     await backupOrders(prefix, by);
     await saveOrders(prefix, { file: 'WooCommerce (synchronisation du ' + today + ')', date: today, orders: ds.orders, products: ds.products }, by);
+    if (shop.catalogue) await writeJson(prefix, 'datasets/catalogue', { file: 'WooCommerce (synchronisation du ' + today + ')', date: today, items: shop.catalogue }, by);
     const last = ds.orders.reduce((m, o) => o[1] > m ? o[1] : m, '');
-    return { ok: true, prefix, count: ds.orders.length, previous: prevCount, delta: ds.orders.length - prevCount, last, unknownProducts: ds.unknown.slice(0, 30), unknownCount: ds.unknown.length, seconds: Math.round((Date.now() - t0) / 100) / 10 };
+    return { ok: true, prefix, count: ds.orders.length, previous: prevCount, delta: ds.orders.length - prevCount, last, unknownProducts: ds.unknown.slice(0, 30), unknownCount: ds.unknown.length, catalogue: shop.catalogue ? { count: shop.catalogue.length, online: shop.catalogue.filter(c => c[3] === 'En ligne').length } : null, seconds: Math.round((Date.now() - t0) / 100) / 10 };
   } finally { running.delete(prefix); }
 }
 
@@ -192,7 +215,8 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type'); res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204); next();
 });
-app.get('/', (req, res) => res.json({ service: 'smartshop-sync-woocommerce', clients: CLIENTS, cron: env('CRON', '') || null }));
+const ownCron = c => env(`WC_${c.toUpperCase()}_CRON`, '');
+app.get('/', (req, res) => res.json({ service: 'smartshop-sync-woocommerce', clients: CLIENTS, cron: env('CRON', '') || null, cronByClient: Object.fromEntries(CLIENTS.filter(ownCron).map(c => [c, ownCron(c)])) }));
 app.post('/sync/:prefix', async (req, res) => {
   const prefix = String(req.params.prefix || '').toLowerCase();
   try {
@@ -207,6 +231,9 @@ app.post('/sync/:prefix', async (req, res) => {
 const once = process.argv.includes('--once');
 if (once) { (async () => { for (const c of CLIENTS) { try { console.log(JSON.stringify(await syncClient(c))); } catch (e) { console.error(c, e.message); process.exitCode = 1; } } process.exit(); })(); }
 else {
-  if (env('CRON', '')) cron.schedule(env('CRON'), async () => { for (const c of CLIENTS) { try { console.log('cron', JSON.stringify(await syncClient(c))); } catch (e) { console.error('cron', c, e.message); } } });
+  // CRON vaut pour les réseaux sans planification propre ; WC_<PREFIXE>_CRON (ex. hebdomadaire) pour les autres
+  const shared = CLIENTS.filter(c => !ownCron(c));
+  if (env('CRON', '') && shared.length) cron.schedule(env('CRON'), async () => { for (const c of shared) { try { console.log('cron', JSON.stringify(await syncClient(c))); } catch (e) { console.error('cron', c, e.message); } } });
+  for (const c of CLIENTS.filter(ownCron)) cron.schedule(ownCron(c), async () => { try { console.log('cron', c, JSON.stringify(await syncClient(c))); } catch (e) { console.error('cron', c, e.message); } });
   app.listen(+env('PORT', 3000), () => console.log('smartshop-sync-woocommerce prêt, réseaux :', CLIENTS.join(', ')));
 }

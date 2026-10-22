@@ -37,16 +37,45 @@ Vérification : ouvrir l'adresse du service dans un navigateur ; elle répond `{
 
 Ajouter le préfixe dans `CLIENTS` (ex. `interkab,cafpi`) et les variables `WC_CAFPI_URL`, `WC_CAFPI_KEY`,
 `WC_CAFPI_SECRET`, `WC_CAFPI_SINCE`, `WC_CAFPI_STATUSES`, et si besoin `WC_CAFPI_AGENCY`. Le préfixe doit être
-celui des collections Firebase de l'outil (`cafpi_datasets`, …). La variable `CRON` vaut pour tous les réseaux de `CLIENTS`.
+celui des collections Firebase de l'outil (`cafpi_datasets`, …). La variable `CRON` vaut pour tous les réseaux de `CLIENTS`,
+sauf ceux qui ont leur propre planification `WC_<PREFIXE>_CRON` (ex. `0 4 * * 1` : chaque lundi à 4 h UTC, 6 h à Paris en été).
 
 `WC_<PREFIXE>_AGENCY` : `societe` (défaut) regroupe les commandes par société de facturation ; `email` regroupe par
 personne (e-mail de facturation), avec le libellé « Prénom NOM (Ville) » de sa commande la plus récente. C'est le
 réglage de CAFPI, dont les commandes sont passées par des courtiers et facturées presque toujours à « CAFPI ».
+`livraison` regroupe par personne d'après le **nom de livraison** (prénom et nom, dans n'importe quel ordre, sans tenir
+compte des accents), libellé « Prénom NOM » le plus fréquent. C'est le réglage de Mon Assurance Facile, dont toutes les
+commandes sont facturées au même nom et livrées aux conseillers. Les noms génériques (mots de `WC_<PREFIXE>_GENERIC`,
+ex. `FACILE,MASF`) sont regroupés par ville de livraison, sous le libellé `WC_<PREFIXE>_GENERIC_LABEL` (« Ma Santé Facile (Lille) »).
 
+**Catalogue WooCommerce** (`WC_<PREFIXE>_CATALOGUE=1`, réseaux sans catalogue monday, ex. Mon Assurance Facile) : à chaque
+synchronisation, tous les produits de la boutique, **publiés et désactivés** (brouillons, privés), sont enregistrés comme
+catalogue de l'outil (statut « En ligne » ou « Désactivé ») ; les commandes prennent le nom actuel du produit (un produit
+renommé reste une seule ligne) et les produits de même nom sont regroupés. Gammes : `WC_<PREFIXE>_FAMILIES`, JSON
+{début de la catégorie principale → gamme} ; sous-gamme = région : `WC_<PREFIXE>_REGIONS`, JSON {code en fin de catégorie → région}.
+Les produits supprimés de la boutique gardent la gamme fixée dans l'outil.
 | Réseau | URL | SINCE | STATUSES | AGENCY |
 |---|---|---|---|---|
 | Interkab | `https://leshop.ma-boite-immo.com` | `2023-10-01` | `completed,processing` | (défaut) |
 | CAFPI | `https://mygoodies.cafpi.fr` | `2025-04-01` | `completed,processing` | `email` |
+| Mon Assurance Facile | `https://smartshop.monassurancefacile.com` | `2020-01-01` | `completed,processing` | `livraison` (+ catalogue, hebdomadaire) |
+
+Variables de Mon Assurance Facile (préfixe `maf`, à ajouter dans `CLIENTS`) :
+
+```
+WC_MAF_URL=https://smartshop.monassurancefacile.com
+WC_MAF_KEY=…            (clé API WooCommerce en lecture)
+WC_MAF_SECRET=…
+WC_MAF_SINCE=2020-01-01
+WC_MAF_STATUSES=completed,processing
+WC_MAF_AGENCY=livraison
+WC_MAF_GENERIC=FACILE,MASF
+WC_MAF_GENERIC_LABEL=Ma Santé Facile
+WC_MAF_CATALOGUE=1
+WC_MAF_FAMILIES={"GOODIES":"Goodies","PRINT":"Print","PLV":"PLV","Destockage":"Déstockage","Bibliothèque de prospection":"Bibliothèque de prospection"}
+WC_MAF_REGIONS={"GO":"Grand-Ouest","GP":"Grand-Paris","HDF":"Hauts-de-France","SE":"Sud-Est","SO":"Sud-Ouest","SIEGE":"Siège"}
+WC_MAF_CRON=0 4 * * 1
+```
 
 ## Ce que fait une synchronisation
 
