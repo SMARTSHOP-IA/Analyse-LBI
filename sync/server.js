@@ -21,7 +21,8 @@
      WC_<PREFIXE>_REGIONS       JSON {"code en fin de catégorie":"Région"} (sous-gamme = région, mode catalogue)
      WC_<PREFIXE>_CRON          planification propre à ce réseau (ex. "0 4 * * 1" : chaque lundi) ; il ne suit alors plus CRON
      CRON                       planification optionnelle, ex. "0 5 * * *" (tous les jours à 5 h, heure UTC)
-     ORIGAMI_URL, ORIGAMI_CLIENT_ID, ORIGAMI_CLIENT_SECRET, ORIGAMI_USERNAME, ORIGAMI_PASSWORD
+     ORIGAMI_URL, ORIGAMI_CLIENT_ID, ORIGAMI_CLIENT_SECRET, ORIGAMI_USERNAME, ORIGAMI_PASSWORD (et ORIGAMI_CONTEXT, facultatif :
+                                identifiant du groupe utilisateur vendeur ; sinon détecté depuis /v1/me)
                                 accès à l'API Origami (marketplace Orpi) ; à saisir uniquement dans Railway, jamais dans le dépôt
      ALLOWED_ORIGINS            origines autorisées à appeler le service (défaut : https://smartshop-ia.github.io)
      PORT                       fourni par Railway
@@ -248,24 +249,37 @@ async function origamiToken() {
   ogTok = { v: j.access_token, exp: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
   return { url, token: ogTok.v };
 }
-async function origamiGet(path, params = {}) {
+async function origamiGet(path, params = {}, context = null) {
   const { url, token } = await origamiToken();
   const q = new URLSearchParams(params).toString();
-  const r = await fetch(url + path + (q ? '?' + q : ''), { headers: { Accept: 'application/json', Authorization: 'Bearer ' + token } });
+  const headers = { Accept: 'application/json', Authorization: 'Bearer ' + token };
+  if (context) headers.context = String(context);
+  const r = await fetch(url + path + (q ? '?' + q : ''), { headers });
   const txt = await r.text(); let j = null; try { j = JSON.parse(txt); } catch (e) {}
   if (!r.ok) throw new Error(`API Origami ${path} : HTTP ${r.status} ${(j && (j.message || j.error)) || txt.slice(0, 200)}`);
   return j;
 }
 // champs et structure renvoyés par l'API (2 dernières commandes), pour construire la synchronisation sur les vrais formats
+// groupe utilisateur (en-tête « context ») : ORIGAMI_CONTEXT, sinon le groupe vendeur du compte API
+async function origamiContext() {
+  if (env('ORIGAMI_CONTEXT')) return { id: env('ORIGAMI_CONTEXT'), groupes: null };
+  const me = await origamiGet('/v1/me', { include: 'user_groups' });
+  const d = me && me.data || {}, raw = d.user_groups || d.userGroups || [];
+  const groupes = (Array.isArray(raw) ? raw : raw.data || []).map(g => ({ id: g.id, nom: g.name || g.label || null, type: g.type || g.user_group_type || null, champs: Object.keys(g) }));
+  const vendeur = groupes.find(g => /seller|vendeur/i.test(String(g.type || '') + ' ' + String(g.nom || ''))) || groupes.find(g => /smart/i.test(String(g.nom || ''))) || groupes[0];
+  return { id: vendeur ? vendeur.id : null, groupes };
+}
 async function origamiApercu() {
   const out = {};
   try { const me = await origamiGet('/v1/me'); const d = me && me.data || {}; out.compte = { id: d.id, email: d.email, champs: Object.keys(d) }; } catch (e) { out.compte = { erreur: e.message }; }
+  let ctx = null;
+  try { const c = await origamiContext(); ctx = c.id; out.context = c; } catch (e) { out.context = { erreur: e.message }; }
   const inc = 'state,orderLines,shippingAddress,billingAddress,refunds,fees';
   try {
-    const o = await origamiGet('/v1/orders', { 'page[size]': '2', 'page[number]': '1', 'order[name]': 'id', 'order[way]': 'desc', include: inc });
+    const o = await origamiGet('/v1/orders', { 'page[size]': '2', 'page[number]': '1', 'order[name]': 'id', 'order[way]': 'desc', include: inc }, ctx);
     out.commandes = { meta: o.meta || null, links: o.links ? Object.keys(o.links) : null, exemples: o.data || o };
   } catch (e) { out.commandes = { erreur: e.message }; }
-  try { const l = await origamiGet('/v1/orders/lines', { 'page[size]': '2', 'order[name]': 'id', 'order[way]': 'desc', include: 'product' }); out.lignes = { meta: l.meta || null, exemples: l.data || l }; }
+  try { const l = await origamiGet('/v1/orders/lines', { 'page[size]': '2', 'order[name]': 'id', 'order[way]': 'desc', include: 'product' }, ctx); out.lignes = { meta: l.meta || null, exemples: l.data || l }; }
   catch (e) { out.lignes = { erreur: e.message }; }
   return out;
 }
