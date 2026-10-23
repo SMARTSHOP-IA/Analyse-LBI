@@ -114,6 +114,12 @@ svg.chart circle.pt{transition:r .12s}
 .ch-tip .r strong{font-weight:900;white-space:nowrap}
 .ch-tip .r small{grid-column:2/4;color:var(--muted);font-size:12px;margin-top:-2px}
 .ch-tip .tot{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-weight:800}
+.n1btn{border:0;border-radius:99px;padding:7px 14px;font-weight:800;font-size:13px;cursor:pointer;background:var(--paper);color:var(--muted);box-shadow:var(--inset-sm);margin-left:10px}
+.n1btn[aria-pressed="true"]{background:var(--grad);color:#fff;box-shadow:none}
+.ch-tip .r small em{font-style:normal;color:var(--muted)}
+.ch-tip .r small b{font-weight:800}
+td small.up,td small.down{display:inline;font-weight:800}
+.legend i.dash{background:none!important;border-top:3px dashed currentColor;height:0;width:16px;opacity:.7}
 .legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:10px;font-size:13px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .legend i{width:14px;height:4px;border-radius:2px;display:inline-block}
@@ -204,7 +210,8 @@ function kpis(c,ords){
   const cats=new Map();ords.forEach(o=>{const seen=new Set();o.i.forEach(([p])=>{const k=(c.products[p]&&c.products[p][1])||'?';if(!seen.has(k)){seen.add(k);cats.set(k,(cats.get(k)||0)+1)}})});
   const top=[...cats].sort((a,b)=>b[1]-a[1])[0];
   const ship=ords.reduce((s,o)=>s+(o.s||0),0);
-  return {cmd:ords.length,ca,net:ca-rem,basket:ca/ords.length,ag,prod:new Set(ords.flatMap(o=>o.i.map(x=>x[0]))).size,code:ords.filter(o=>o.c.length).length/ords.length,
+  const enc=ca-rem+ship;
+  return {cmd:ords.length,ca,net:ca-rem,enc,basket:enc/ords.length,ag,prod:new Set(ords.flatMap(o=>o.i.map(x=>x[0]))).size,code:ords.filter(o=>o.c.length).length/ords.length,
     topCat:top?top[0]+' ('+pct(top[1]/ords.length)+')':'–',penN:new Set(ords.filter(o=>o.m).map(o=>o.a)).size,comm:ords.reduce((s,o)=>s+(o.cm!=null?o.cm:(c.commBase==='brut'?o.t:Math.max(0,o.t-(o.r||0)))*commRateOf(c,o)),0),ship};
 }
 const LAST=()=>DATA.reduce((m,c)=>c.last>m?c.last:m,'');
@@ -240,14 +247,14 @@ function keyLbl(k,long){/* mois « AAAA-MM » ou jour « AAAA-MM-JJ » */
   return long?JOURS[utc(k).getUTCDay()]+' '+dShort(k)+' '+k.slice(0,4):dShort(k)}
 function lineChart(el,keys,series,fmt,tip,whole){
   const w=Math.max(300,el.clientWidth||700),h=280,pl=54,pr=12,pt=12,pb=30,iw=w-pl-pr,ih=h-pt-pb;
-  const mx=Math.max(1,...series.flatMap(s=>s.vals));const nice=(()=>{const p=Math.pow(10,Math.floor(Math.log10(mx)));const n=mx/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p})(),top=whole?Math.max(4,Math.ceil(nice/4)*4):nice;/* nombres de commandes : graduations entières */
+  const mx=Math.max(1,...series.flatMap(s=>s.vals));/* séries N-1 comprises */const nice=(()=>{const p=Math.pow(10,Math.floor(Math.log10(mx)));const n=mx/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p})(),top=whole?Math.max(4,Math.ceil(nice/4)*4):nice;/* nombres de commandes : graduations entières */
   const X=i=>pl+iw*(keys.length>1?i/(keys.length-1):.5),Y=v=>pt+ih-ih*v/top,step=Math.ceil(keys.length/Math.max(1,Math.floor(iw/52)));
   let s=`<svg class="chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Graphique : survolez un point pour voir le nombre de commandes">`;
   for(let k=0;k<=4;k++){const y=pt+ih-ih*k/4;s+=`<line class="grid" x1="${pl}" x2="${w-pr}" y1="${y}" y2="${y}"/><text x="${pl-6}" y="${y+4}" text-anchor="end">${fmt(top*k/4)}</text>`}
   keys.forEach((k,i)=>{if(i%step===0)s+=`<text x="${X(i)}" y="${h-10}" text-anchor="middle">${keyLbl(k)}</text>`});
   s+=`<line class="vline" x1="0" x2="0" y1="${pt}" y2="${pt+ih}"/>`;
-  series.forEach((se,j)=>{s+=`<path class="ln" stroke="${se.col}" d="${se.vals.map((v,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)).join('')}"/>`;
-    se.vals.forEach((v,i)=>{s+=`<circle class="pt" data-i="${i}" cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${keys.length>40?2:3}" fill="${se.col}"/>`})});
+  series.forEach((se,j)=>{s+=`<path class="ln" stroke="${se.col}"${se.dash?' stroke-dasharray="6 5" opacity=".55"':''} d="${se.vals.map((v,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)).join('')}"/>`;
+    if(!se.dash)se.vals.forEach((v,i)=>{s+=`<circle class="pt" data-i="${i}" cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${keys.length>40?2:3}" fill="${se.col}"/>`})});
   const bw=keys.length>1?iw/(keys.length-1):iw;
   keys.forEach((k,i)=>{s+=`<rect class="hz" data-i="${i}" x="${(X(i)-bw/2).toFixed(1)}" y="${pt}" width="${bw.toFixed(1)}" height="${ih}"/>`});
   el.innerHTML=s+'</svg><div class="ch-tip" hidden role="status"></div>';
@@ -262,28 +269,44 @@ function lineChart(el,keys,series,fmt,tip,whole){
   svg.querySelectorAll('rect.hz').forEach(r=>{r.addEventListener('pointerenter',()=>show(+r.dataset.i));r.addEventListener('pointerdown',()=>show(+r.dataset.i))});
   svg.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')hide()});
 }
+/* même période de l'année précédente (N-1), limitée à la date des dernières données */
+const minusYear=x=>{const d=utc(x.slice(0,10));d.setUTCFullYear(d.getUTCFullYear()-1);return iso(d)};
+function prevRange(){const r=range();if(!r)return null;const last=LAST().slice(0,10);if(r[0]>last)return null;const end=r[1]>last?last:r[1];
+  const w=curWeek();
+  if(w){const pw=weeksOf(+S.year-1,'all').find(x=>x.n===w.n);if(!pw)return null;const span=Math.round((utc(end)-utc(r[0]))/864e5);return {cur:[r[0],end],prev:[pw.from,addDays(pw.from,span)]}}
+  return {cur:[r[0],end],prev:[minusYear(r[0]),minusYear(end)]}}
+const inR=(c,r)=>c.orders.filter(o=>{const d=o.d.slice(0,10);return d>=r[0]&&d<=r[1]});
+const rLbl=r=>dShort(r[0])+' '+r[0].slice(0,4)+' → '+dShort(r[1])+' '+r[1].slice(0,4);
+function evo(a,b,txt){if(!b)return '';const d=(a-b)/b*100;return `<small class="${Math.abs(d)<.05?'':d>0?'up':'down'}">${d>0?'+':''}${nf1.format(d)} %${txt||''}</small>`}
 function render(){
-  const app=document.getElementById('app'),L=LAST();
+  const app=document.getElementById('app'),L=LAST(),PR=prevRange(),yoy=!!PR;
   document.getElementById('periodSign').textContent=periodLbl()+' · '+DATA.length+' réseau'+(DATA.length>1?'x':'');
-  const rows=DATA.map(c=>({c,K:kpis(c,filt(c)),K12:kpis(c,r12(c)),K24:kpis(c,r12(c,true))}));
-  const tot=k=>rows.reduce((s,r)=>s+(r.K?r.K[k]:0),0),tot12=k=>rows.reduce((s,r)=>s+(r.K12?r.K12[k]:0),0),tot24=k=>rows.reduce((s,r)=>s+(r.K24?r.K24[k]:0),0);
-  const anyComm=rows.some(r=>r.c.commission>0||(r.K&&r.K.comm>0)),anyShip=rows.some(r=>r.K&&r.K.ship>0);
+  const rows=DATA.map(c=>({c,K:kpis(c,filt(c)),P:yoy?kpis(c,inR(c,PR.prev)):null,K12:kpis(c,r12(c)),K24:kpis(c,r12(c,true))}));
+  const sum=(set,k)=>rows.reduce((s,r)=>s+(r[set]?r[set][k]:0),0);
+  const tot=k=>sum('K',k),totP=k=>sum('P',k),tot12=k=>sum('K12',k),tot24=k=>sum('K24',k);
+  /* comparaison sous chaque chiffre clé : N-1 si une période est choisie, sinon 12 derniers mois */
+  const cmp=(k,fmt)=>yoy?`<small>N-1 : ${fmt(totP(k))}</small>${evo(tot(k),totP(k),' vs N-1')}`:`<small>12 derniers mois : ${fmt(tot12(k))}</small>${dl(tot12(k),tot24(k))}`;
+  const anyComm=rows.some(r=>r.c.commission>0||(r.K&&r.K.comm>0)||(r.P&&r.P.comm>0)),anyShip=rows.some(r=>r.K&&r.K.ship>0);
+  const E=v=>eur.format(v),N=v=>nf.format(v);
   app.innerHTML=`
   <div class="kpis">
-    <div class="kpi"><b>${nf.format(tot('cmd'))}</b><span>commandes, tous réseaux</span>${S.year==='all'?`<small>12 derniers mois : ${nf.format(tot12('cmd'))}</small>${dl(tot12('cmd'),tot24('cmd'))}`:''}</div>
-    <div class="kpi"><b>${eur.format(tot('ca'))}</b><span>CA HT produits</span>${S.year==='all'?`<small>12 derniers mois : ${eur.format(tot12('ca'))}</small>${dl(tot12('ca'),tot24('ca'))}`:''}</div>
-    <div class="kpi"><b>${eur.format(tot('net'))}</b><span>CA HT après remises</span></div>
-    <div class="kpi"><b>${nf.format(tot('ag'))}</b><span>agences clientes</span></div>
-    ${anyComm?`<div class="kpi"><b>${eur.format(tot('comm'))}</b><span>commissions reversées</span></div>`:''}
-    ${anyShip?`<div class="kpi"><b>${eur.format(tot('ship'))}</b><span>frais de port facturés</span></div>`:''}
+    <div class="kpi"><b>${N(tot('cmd'))}</b><span>commandes, tous réseaux</span>${cmp('cmd',N)}</div>
+    <div class="kpi"><b>${E(tot('enc'))}</b><span>CA HT encaissé, frais de port compris</span>${cmp('enc',E)}</div>
+    <div class="kpi"><b>${E(tot('ca'))}</b><span>CA HT produits (avant remise, hors port)</span>${cmp('ca',E)}</div>
+    <div class="kpi"><b>${N(tot('ag'))}</b><span>agences clientes</span>${yoy?cmp('ag',N):''}</div>
+    ${anyComm?`<div class="kpi"><b>${E(tot('comm'))}</b><span>commissions reversées</span>${yoy?cmp('comm',E):''}</div>`:''}
+    ${anyShip?`<div class="kpi"><b>${E(tot('ship'))}</b><span>dont frais de port facturés</span>${yoy?cmp('ship',E):''}</div>`:''}
     <div class="kpi"><b>${DATA.length}</b><span>réseaux suivis</span><small>dernière commande : ${fd(L)}</small></div>
   </div>
-  <div class="box"><div class="box-head"><h3>Comparaison des réseaux</h3></div><div class="tw"><table><thead><tr><th>Réseau</th><th class="n">Commandes</th><th class="n">CA HT</th><th class="n">Panier moyen</th><th class="n">Agences clientes</th><th class="n">Taux de pénétration</th><th class="n">Produits vendus</th><th class="n">Commandes avec code</th>${anyComm?'<th class="n">Commissions</th>':''}<th>Typologie n°1</th><th class="n">12 derniers mois</th><th>Période</th></tr></thead><tbody>
-  ${rows.map((r,k)=>{const K=r.K;return `<tr><td class="c"><span class="sw" style="background:${COL[k%COL.length]}"></span><b>${esc(r.c.name)}</b>${r.c.url?` · <a class="lnk" href="${esc(r.c.url)}" target="_blank" rel="noopener">ouvrir</a>`:''}</td>${K?`<td class="n"><b>${nf.format(K.cmd)}</b></td><td class="n">${eur.format(K.ca)}</td><td class="n">${eur.format(K.basket)}</td><td class="n">${nf.format(K.ag)}</td><td class="n">${r.c.network&&r.c.penOK?pct(K.penN/r.c.network)+' <span class="muted">('+nf.format(K.penN)+' / '+nf.format(r.c.network)+')</span>':'–'}</td><td class="n">${nf.format(K.prod)}</td><td class="n">${pct(K.code)}</td>${anyComm?`<td class="n">${r.c.commission?eur.format(K.comm)+' <span class="muted">('+nf1.format(r.c.commission*100)+' %)</span>':K.comm>0?eur.format(K.comm)+' <span class="muted">(réelles)</span>':'–'}</td>`:''}<td>${esc(K.topCat)}</td><td class="n">${r.K12?nf.format(r.K12.cmd)+' cmd '+dl(r.K12.cmd,r.K24&&r.K24.cmd).replace('vs 12 mois précédents',''):'–'}</td><td class="muted">${fd(r.c.first)} → ${fd(r.c.last)}</td>`:`<td colspan="10" class="muted">Aucune commande sur la période</td>`}</tr>`}).join('')}
-  </tbody></table></div><p class="note">Taux de pénétration : part des agences de l'annuaire du réseau ayant commandé (uniquement si un annuaire est intégré et tant que les commandes n'ont pas été réimportées depuis l'outil ; ouvrez l'outil du réseau pour la valeur à jour). Montants HT, produits uniquement, avant remise sauf mention contraire.</p></div>
-  <div class="box"><div class="box-head"><h3 id="chT"></h3><div class="seg" role="group"><button data-m="cmd">Commandes</button><button data-m="ca">CA HT</button></div></div><div id="ch"></div><div class="legend" id="chL"></div></div>
+  <div class="box"><div class="box-head"><h3>Comparaison des réseaux</h3></div><div class="tw"><table><thead><tr><th>Réseau</th><th class="n">Commandes</th><th class="n">CA HT encaissé</th><th class="n">Panier moyen</th><th class="n">Agences clientes</th><th class="n">Taux de pénétration</th><th class="n">Produits vendus</th><th class="n">Commandes avec code</th>${anyComm?'<th class="n">Commissions</th>':''}<th>Typologie n°1</th><th class="n">${yoy?'Évolution vs N-1':'12 derniers mois'}</th><th>Période</th></tr></thead><tbody>
+  ${rows.map((r,k)=>{const K=r.K,P=r.P;
+    const evoCell=yoy?(P?`CA ${evo(K?K.enc:0,P.enc)||'–'} · cmd ${evo(K?K.cmd:0,P.cmd)||'–'}<br><span class="muted">N-1 : ${N(P.cmd)} cmd · ${E(P.enc)}</span>`:'<span class="muted">pas de commande en N-1</span>')
+      :(r.K12?N(r.K12.cmd)+' cmd '+dl(r.K12.cmd,r.K24&&r.K24.cmd).replace('vs 12 mois précédents',''):'–');
+    return `<tr><td class="c"><span class="sw" style="background:${COL[k%COL.length]}"></span><b>${esc(r.c.name)}</b>${r.c.url?` · <a class="lnk" href="${esc(r.c.url)}" target="_blank" rel="noopener">ouvrir</a>`:''}</td>${K?`<td class="n"><b>${N(K.cmd)}</b></td><td class="n">${E(K.enc)}</td><td class="n">${E(K.basket)}</td><td class="n">${N(K.ag)}</td><td class="n">${r.c.network&&r.c.penOK?pct(K.penN/r.c.network)+' <span class="muted">('+N(K.penN)+' / '+N(r.c.network)+')</span>':'–'}</td><td class="n">${N(K.prod)}</td><td class="n">${pct(K.code)}</td>${anyComm?`<td class="n">${r.c.commission?E(K.comm)+' <span class="muted">('+nf1.format(r.c.commission*100)+' %)</span>':K.comm>0?E(K.comm)+' <span class="muted">(réelles)</span>':'–'}</td>`:''}<td>${esc(K.topCat)}</td><td class="n">${evoCell}</td><td class="muted">${fd(r.c.first)} → ${fd(r.c.last)}</td>`:`<td colspan="${anyComm?9:8}" class="muted">Aucune commande sur la période</td><td class="n">${evoCell}</td><td></td>`}</tr>`}).join('')}
+  </tbody></table></div><p class="note">CA HT encaissé : produits après remises + frais de port, hors commandes remboursées ; le panier moyen est calculé sur ce montant.${yoy?` Comparaison avec la même période de l'année précédente : ${esc(rLbl(PR.cur))} comparé à ${esc(rLbl(PR.prev))}${PR.cur[1]<range()[1]?' (période en cours : comparée jusqu\'à la date des dernières données)':''}.`:' Choisissez une année, un mois ou une semaine pour comparer avec la même période de l\'année précédente.'} Taux de pénétration : part des agences de l'annuaire du réseau ayant commandé (uniquement si un annuaire est intégré et tant que les commandes n'ont pas été réimportées depuis l'outil ; ouvrez l'outil du réseau pour la valeur à jour).</p></div>
+  <div class="box"><div class="box-head"><h3 id="chT"></h3><div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px"><div class="seg" role="group"><button data-m="cmd">Commandes</button><button data-m="ca">CA HT encaissé</button></div><button class="n1btn" id="n1btn" aria-pressed="false" title="Afficher en pointillés les valeurs de la même période de l'année précédente">Comparer à N-1</button></div></div><div id="ch"></div><div class="legend" id="chL"></div></div>
   <div class="grid2">
-    <div class="box"><h3>Part de chaque réseau dans le CA HT</h3><div id="share"></div></div>
+    <div class="box"><h3>Part de chaque réseau dans le CA HT encaissé</h3><div id="share"></div></div>
     <div class="box"><h3>Commandes par agence cliente</h3><div id="perAg"></div><p class="note">Nombre moyen de commandes par agence sur la période : mesure la fidélité des agences de chaque réseau.</p></div>
   </div>`;
   const draw=()=>{
@@ -291,23 +314,32 @@ function render(){
     const keys=[],r=range(),daily=!!(r&&(S.month!=='all'||S.week!=='all'));
     if(daily){for(let d=r[0];d<=r[1];d=addDays(d,1))keys.push(d)}
     else{const end=L.slice(0,7);let k=S.year==='all'?addMonths(end,-23):S.year+'-01';const stop=S.year==='all'?end:S.year+'-12';while(k<=stop){keys.push(k);k=addMonths(k,1)}}
+    /* clé de la même période N-1 : même mois N-1, même jour N-1, ou même jour de la même semaine N-1 */
+    const w=curWeek(),pw=w?weeksOf(+S.year-1,'all').find(x=>x.n===w.n):null;
+    const prevKey=(k,i)=>!daily?addMonths(k,-12):w?(pw?addDays(pw.from,i):null):minusYear(k);
     const kOf=o=>daily?o.d.slice(0,10):o.ym;
-    const series=DATA.map((c,i)=>{const cm=new Map(keys.map(k=>[k,0])),ca=new Map(keys.map(k=>[k,0]));
-      c.orders.forEach(o=>{const k=kOf(o);if(cm.has(k)){cm.set(k,cm.get(k)+1);ca.set(k,ca.get(k)+o.t)}});
-      const cmd=[...cm.values()],caV=[...ca.values()];return {l:c.name,col:COL[i%COL.length],cmd,ca:caV,vals:S.metric==='cmd'?cmd:caV}});
-    document.getElementById('chT').textContent=(S.metric==='cmd'?'Commandes':'CA HT')+(daily?' par jour':' par mois')+' et par réseau'+(S.year==='all'?' (24 derniers mois)':' · '+periodLbl());
+    const series=DATA.map((c,i)=>{const cm=new Map(),ca=new Map();
+      c.orders.forEach(o=>{const k=kOf(o);cm.set(k,(cm.get(k)||0)+1);ca.set(k,(ca.get(k)||0)+o.t-(o.r||0)+(o.s||0))});
+      const at=(m,k)=>k&&m.get(k)||0,pk=keys.map((k,j)=>prevKey(k,j));
+      const cmd=keys.map(k=>at(cm,k)),caV=keys.map(k=>at(ca,k)),pcmd=pk.map(k=>at(cm,k)),pca=pk.map(k=>at(ca,k));
+      return {l:c.name,col:COL[i%COL.length],cmd,ca:caV,pcmd,pca,vals:S.metric==='cmd'?cmd:caV}});
+    const shown=S.n1?[...series,...series.map(se=>({l:se.l+' N-1',col:se.col,dash:true,vals:S.metric==='cmd'?se.pcmd:se.pca}))]:series;
+    document.getElementById('chT').textContent=(S.metric==='cmd'?'Commandes':'CA HT encaissé')+(daily?' par jour':' par mois')+' et par réseau'+(S.year==='all'?' (24 derniers mois)':' · '+periodLbl());
     const plural=n=>nf.format(n)+' commande'+(n>1?'s':'');
-    const tip=i=>{const tc=series.reduce((t,se)=>t+se.cmd[i],0),tca=series.reduce((t,se)=>t+se.ca[i],0);
-      return `<b class="t">${esc(keyLbl(keys[i],true))}</b>`+series.map(se=>`<div class="r"><i style="background:${se.col}"></i><span>${esc(se.l)}</span><strong>${plural(se.cmd[i])}</strong><small>${eur.format(se.ca[i])} HT</small></div>`).join('')
-        +(series.length>1?`<div class="r tot"><span></span><span>Total</span><strong>${plural(tc)}</strong><small>${eur.format(tca)} HT</small></div>`:'')};
-    lineChart(document.getElementById('ch'),keys,series,S.metric==='cmd'?v=>nf.format(Math.round(v)):v=>nf.format(Math.round(v/1000))+' k€',tip,S.metric==='cmd');
-    document.getElementById('chL').innerHTML=series.map(s=>`<span><i style="background:${s.col}"></i>${esc(s.l)}</span>`).join('');
+    const tip=i=>{const sumI=f=>series.reduce((t,se)=>t+se[f][i],0),hasP=series.some(se=>se.pcmd[i]>0);
+      const n1=(c,p)=>`<em> · N-1 : </em><b>${plural(p)}</b> ${evo(c,p)}`;
+      return `<b class="t">${esc(keyLbl(keys[i],true))}</b>`+series.map(se=>`<div class="r"><i style="background:${se.col}"></i><span>${esc(se.l)}</span><strong>${plural(se.cmd[i])}</strong><small>${eur.format(se.ca[i])} HT${hasP?n1(se.cmd[i],se.pcmd[i]):''}</small></div>`).join('')
+        +(series.length>1?`<div class="r tot"><span></span><span>Total</span><strong>${plural(sumI('cmd'))}</strong><small>${eur.format(sumI('ca'))} HT${hasP?n1(sumI('cmd'),sumI('pcmd')):''}</small></div>`:'')};
+    lineChart(document.getElementById('ch'),keys,shown,S.metric==='cmd'?v=>nf.format(Math.round(v)):(Math.max(1,...shown.flatMap(x=>x.vals))<10000?v=>nf.format(Math.round(v))+' €':v=>nf.format(Math.round(v/1000))+' k€'),tip,S.metric==='cmd');
+    document.getElementById('chL').innerHTML=series.map(s=>`<span><i style="background:${s.col}"></i>${esc(s.l)}</span>`).join('')+(S.n1?'<span><i class="dash"></i>pointillés : même période N-1</span>':'');
     app.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===S.metric));
+    document.getElementById('n1btn').setAttribute('aria-pressed',!!S.n1);
     const bars=(id,items,fmt)=>{const mx=Math.max(1,...items.map(x=>x.v));document.getElementById(id).innerHTML=items.map((x,i)=>`<div style="display:grid;grid-template-columns:140px 1fr 90px;gap:12px;align-items:center;padding:7px 0"><b>${esc(x.l)}</b><div style="height:10px;border-radius:5px;background:var(--paper);box-shadow:var(--inset-sm);overflow:hidden"><i style="display:block;height:100%;width:${(x.v/mx*100).toFixed(1)}%;background:${COL[i%COL.length]}"></i></div><span style="text-align:right;font-weight:800">${fmt(x.v)}</span></div>`).join('')};
-    const caTot=tot('ca')||1;bars('share',rows.map(r=>({l:r.c.name,v:r.K?r.K.ca:0})),v=>eur.format(v)+' · '+pct(v/caTot));
+    const caTot=tot('enc')||1;bars('share',rows.map(r=>({l:r.c.name,v:r.K?r.K.enc:0})),v=>eur.format(v)+' · '+pct(v/caTot));
     bars('perAg',rows.map(r=>({l:r.c.name,v:r.K?r.K.cmd/r.K.ag:0})),v=>nf1.format(v));
   };
   app.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{S.metric=b.dataset.m;draw()});
+  document.getElementById('n1btn').onclick=()=>{S.n1=!S.n1;draw()};
   draw();window.onresize=draw;
 }
 function start(data){

@@ -21,6 +21,8 @@
      WC_<PREFIXE>_REGIONS       JSON {"code en fin de catégorie":"Région"} (sous-gamme = région, mode catalogue)
      WC_<PREFIXE>_CRON          planification propre à ce réseau (ex. "0 4 * * 1" : chaque lundi) ; il ne suit alors plus CRON
      CRON                       planification optionnelle, ex. "0 5 * * *" (tous les jours à 5 h, heure UTC)
+     ORIGAMI_URL, ORIGAMI_CLIENT_ID, ORIGAMI_CLIENT_SECRET, ORIGAMI_USERNAME, ORIGAMI_PASSWORD
+                                accès à l'API Origami (marketplace Orpi) ; à saisir uniquement dans Railway, jamais dans le dépôt
      ALLOWED_ORIGINS            origines autorisées à appeler le service (défaut : https://smartshop-ia.github.io)
      PORT                       fourni par Railway
 */
@@ -124,6 +126,10 @@ function buildDataset(prefix, { orders, prodCats }, prevProducts, agency = 'soci
   const prevByKey = new Map((prevProducts || []).map(p => [normKey(p[0]), p[0]]));
   for (const o of orders) {
     const n = Number(o.number || o.id); if (!isFinite(n) || !n) continue;
+    // remboursements : une commande remboursée en totalité est écartée ; un remboursement partiel est déduit au prorata
+    const totalTTC = num(o.total), refunded = (o.refunds || []).reduce((s, r) => s + Math.abs(num(r.total)), 0);
+    if (refunded > 0 && refunded >= totalTTC - 0.01) continue;
+    const kr = refunded > 0 && totalTTC > 0 ? 1 - refunded / totalTTC : 1;
     const bill = o.billing || {}, ship = o.shipping || {};
     const cp = padCp(ship.postcode || bill.postcode), soc = decode(bill.company || '').replace(/\s+/g, ' ').trim().toUpperCase() || '(SANS NOM)';
     const items = [];
@@ -133,11 +139,11 @@ function buildDataset(prefix, { orders, prodCats }, prevProducts, agency = 'soci
       if (!pidx.has(name)) { pidx.set(name, prodList.length); prodList.push(name); }
       const p = pidx.get(name), cat = prodCats.get(li.product_id) || '';
       if (cat) { const f = famOf(cat).join('|'); const m = prodCatCount.get(p) || new Map(); m.set(f, (m.get(f) || 0) + 1); prodCatCount.set(p, m); }
-      items.push([p, Math.round(num(li.quantity)), r2(li.subtotal)]);
+      items.push([p, Math.round(num(li.quantity)), r2(num(li.subtotal) * kr)]);
     }
     const t = r2(items.reduce((s, i) => s + i[2], 0));
     const codes = (o.coupon_lines || []).filter(c => c.code).map(c => [String(c.code).trim().toLowerCase(), r2(c.discount)]);
-    out.push([n, fmtDate(o.date_created), t, r2(o.total), r2(o.discount_total), codes, items, depOf(cp), cp, titleCase(decode(ship.city || bill.city || '').trim()), soc, r2(o.shipping_total)]);
+    out.push([n, fmtDate(o.date_created), t, r2(totalTTC - refunded), r2(num(o.discount_total) * kr), codes, items, depOf(cp), cp, titleCase(decode(ship.city || bill.city || '').trim()), soc, r2(num(o.shipping_total) * kr)]);
     const mail = String(bill.email || '').trim().toLowerCase() || soc;
     keyed.push([mail, courtierLabel(bill.first_name, bill.last_name, ship.city || bill.city, mail)]);
     if (agency === 'livraison') keyedL.push(livraisonKey(o, cfg));
@@ -226,6 +232,53 @@ app.post('/sync/:prefix', async (req, res) => {
     if (!u.exists || u.data().role !== 'editor') return res.status(403).json({ error: `Le compte ${email} n'a pas le rôle editor.` });
     res.json(await syncClient(prefix, email));
   } catch (e) { console.error(e); res.status(e.message && /déjà en cours/.test(e.message) ? 409 : 500).json({ error: e.message || String(e) }); }
+});
+
+/* ---------- Origami (Orpi) : connexion à l'API et aperçu, avant la synchronisation automatique ---------- */
+let ogTok = null;
+async function origamiToken() {
+  const url = env('ORIGAMI_URL', '').replace(/\/$/, '');
+  if (!url || !env('ORIGAMI_CLIENT_ID') || !env('ORIGAMI_CLIENT_SECRET') || !env('ORIGAMI_USERNAME') || !env('ORIGAMI_PASSWORD'))
+    throw new Error('Variables ORIGAMI_URL, ORIGAMI_CLIENT_ID, ORIGAMI_CLIENT_SECRET, ORIGAMI_USERNAME et ORIGAMI_PASSWORD à renseigner dans Railway.');
+  if (ogTok && ogTok.exp > Date.now() + 60000) return { url, token: ogTok.v };
+  const body = new URLSearchParams({ grant_type: 'password', client_id: env('ORIGAMI_CLIENT_ID'), client_secret: env('ORIGAMI_CLIENT_SECRET'), username: env('ORIGAMI_USERNAME'), password: env('ORIGAMI_PASSWORD') });
+  const r = await fetch(url + '/oauth/token', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.access_token) throw new Error(`Connexion à l'API Origami refusée (HTTP ${r.status}${j.message ? ' : ' + j.message : j.error ? ' : ' + j.error : ''}).`);
+  ogTok = { v: j.access_token, exp: Date.now() + (Number(j.expires_in) || 3600) * 1000 };
+  return { url, token: ogTok.v };
+}
+async function origamiGet(path, params = {}) {
+  const { url, token } = await origamiToken();
+  const q = new URLSearchParams(params).toString();
+  const r = await fetch(url + path + (q ? '?' + q : ''), { headers: { Accept: 'application/json', Authorization: 'Bearer ' + token } });
+  const txt = await r.text(); let j = null; try { j = JSON.parse(txt); } catch (e) {}
+  if (!r.ok) throw new Error(`API Origami ${path} : HTTP ${r.status} ${(j && (j.message || j.error)) || txt.slice(0, 200)}`);
+  return j;
+}
+// champs et structure renvoyés par l'API (2 dernières commandes), pour construire la synchronisation sur les vrais formats
+async function origamiApercu() {
+  const out = {};
+  try { const me = await origamiGet('/v1/me'); const d = me && me.data || {}; out.compte = { id: d.id, email: d.email, champs: Object.keys(d) }; } catch (e) { out.compte = { erreur: e.message }; }
+  const inc = 'state,orderLines,shippingAddress,billingAddress,refunds,fees';
+  try {
+    const o = await origamiGet('/v1/orders', { 'page[size]': '2', 'page[number]': '1', 'order[name]': 'id', 'order[way]': 'desc', include: inc });
+    out.commandes = { meta: o.meta || null, links: o.links ? Object.keys(o.links) : null, exemples: o.data || o };
+  } catch (e) { out.commandes = { erreur: e.message }; }
+  try { const l = await origamiGet('/v1/orders/lines', { 'page[size]': '2', 'order[name]': 'id', 'order[way]': 'desc', include: 'product' }); out.lignes = { meta: l.meta || null, exemples: l.data || l }; }
+  catch (e) { out.lignes = { erreur: e.message }; }
+  return out;
+}
+async function requireEditor(req) {
+  const m = /^Bearer (.+)$/.exec(req.headers.authorization || ''); if (!m) { const e = new Error('Connexion requise.'); e.status = 401; throw e; }
+  const tok = await admin.auth().verifyIdToken(m[1]); const email = (tok.email || '').toLowerCase();
+  const u = await fs.collection('authorizedUsers').doc(email).get();
+  if (!u.exists || u.data().role !== 'editor') { const e = new Error(`Le compte ${email} n'a pas le rôle editor.`); e.status = 403; throw e; }
+  return email;
+}
+app.get('/origami/apercu', async (req, res) => {
+  try { await requireEditor(req); res.json(await origamiApercu()); }
+  catch (e) { console.error(e); res.status(e.status || 500).json({ error: e.message || String(e) }); }
 });
 
 const once = process.argv.includes('--once');

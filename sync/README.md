@@ -81,6 +81,8 @@ WC_MAF_CRON=0 4 * * 1
 
 - Lecture de toutes les commandes aux statuts choisis depuis la date de départ (pas seulement les nouvelles :
   une commande passée en « annulée » ou « remboursée » disparaît ainsi de l'étude).
+- Remboursements : une commande remboursée en totalité est écartée, même si son statut est resté « Terminée » ;
+  un remboursement partiel est déduit des montants de la commande (produits, frais de port, TTC), au prorata.
 - Pour chaque commande : numéro, date, CA HT produits (somme des lignes avant remise), TTC, remise,
   codes promo, lignes (produit, quantité, HT), code postal et ville de livraison, société de facturation (ou
   courtier en mode `email`),
@@ -97,3 +99,23 @@ WC_MAF_CRON=0 4 * * 1
 npm install
 FIREBASE_SERVICE_ACCOUNT='…' CLIENTS=interkab WC_INTERKAB_URL=… WC_INTERKAB_KEY=… WC_INTERKAB_SECRET=… npm run sync
 ```
+
+
+## API Origami (Orpi) : première étape
+
+Orpi passe ses commandes sur la marketplace Origami, et non sur WooCommerce. Le service sait se connecter à l'API
+Origami (OAuth, documentation : https://api-doc.origami-marketplace.com) pour préparer la synchronisation automatique.
+
+Variables à ajouter dans Railway, **jamais dans ce dépôt** :
+
+| Variable | Valeur |
+|---|---|
+| `ORIGAMI_URL` | `https://api-orpi.origami-marketplace.com` |
+| `ORIGAMI_CLIENT_ID` | identifiant client fourni par Origami |
+| `ORIGAMI_CLIENT_SECRET` | secret client fourni par Origami |
+| `ORIGAMI_USERNAME` | e-mail du compte API |
+| `ORIGAMI_PASSWORD` | mot de passe du compte API |
+
+La route `GET /origami/apercu` (compte editor connecté, comme `/sync`) renvoie le compte API et les deux dernières
+commandes avec leurs lignes, statut, adresses et remboursements : elle sert à vérifier les droits du compte et le format
+réel des données avant d'écrire la synchronisation complète d'Orpi.
