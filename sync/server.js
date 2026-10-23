@@ -290,6 +290,17 @@ async function requireEditor(req) {
   if (!u.exists || u.data().role !== 'editor') { const e = new Error(`Le compte ${email} n'a pas le rôle editor.`); e.status = 403; throw e; }
   return email;
 }
+// lecture seule d'une route /v1/… de l'API Origami (exploration des formats ; comptes editor uniquement)
+app.get('/origami/lecture', async (req, res) => {
+  try {
+    await requireEditor(req);
+    const path = String(req.query.path || '');
+    if (!/^\/v1\/[a-z0-9_\/-]+$/i.test(path)) return res.status(400).json({ error: 'Paramètre path invalide (ex. /v1/orders).' });
+    const params = {}; for (const [k, v] of Object.entries(req.query)) if (k !== 'path') params[k] = String(v);
+    const c = await origamiContext();
+    res.json(await origamiGet(path, params, c.id));
+  } catch (e) { console.error(e); res.status(e.status || 500).json({ error: e.message || String(e) }); }
+});
 app.get('/origami/apercu', async (req, res) => {
   try { await requireEditor(req); res.json(await origamiApercu()); }
   catch (e) { console.error(e); res.status(e.status || 500).json({ error: e.message || String(e) }); }
