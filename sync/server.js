@@ -31,11 +31,13 @@ import express from 'express';
 import admin from 'firebase-admin';
 import cron from 'node-cron';
 import { buildCatalogue, renameLines, livraisonKey, pickLabels, parseJson } from './catalogue.js';
+import { buildOrigamiDataset, fetchOrigami } from './origami.js';
 
 const env = (k, d) => (process.env[k] ?? d);
 const CLIENTS = env('CLIENTS', 'interkab').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 const ORIGINS = env('ALLOWED_ORIGINS', 'https://smartshop-ia.github.io').split(',').map(s => s.trim());
 const CHUNK = 700;
+const OG_PREFIX = env('ORIGAMI_PREFIX', 'orpi').toLowerCase(), OG_ON = () => !!env('ORIGAMI_URL', '');
 
 /* ---------- Firebase ---------- */
 if (!process.env.FIREBASE_SERVICE_ACCOUNT) { console.error('FIREBASE_SERVICE_ACCOUNT manquant'); process.exit(1); }
@@ -223,7 +225,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204); next();
 });
 const ownCron = c => env(`WC_${c.toUpperCase()}_CRON`, '');
-app.get('/', (req, res) => res.json({ service: 'smartshop-sync-woocommerce', clients: CLIENTS, cron: env('CRON', '') || null, cronByClient: Object.fromEntries(CLIENTS.filter(ownCron).map(c => [c, ownCron(c)])) }));
+app.get('/', (req, res) => res.json({ service: 'smartshop-sync-woocommerce', clients: CLIENTS, origami: OG_ON() ? OG_PREFIX : null, cron: env('CRON', '') || null, cronByClient: Object.fromEntries(CLIENTS.filter(ownCron).map(c => [c, ownCron(c)])) }));
 app.post('/sync/:prefix', async (req, res) => {
   const prefix = String(req.params.prefix || '').toLowerCase();
   try {
@@ -231,7 +233,7 @@ app.post('/sync/:prefix', async (req, res) => {
     const tok = await admin.auth().verifyIdToken(m[1]); const email = (tok.email || '').toLowerCase();
     const u = await fs.collection('authorizedUsers').doc(email).get();
     if (!u.exists || u.data().role !== 'editor') return res.status(403).json({ error: `Le compte ${email} n'a pas le rôle editor.` });
-    res.json(await syncClient(prefix, email));
+    res.json(prefix === OG_PREFIX && OG_ON() ? await syncOrigami(email) : await syncClient(prefix, email));
   } catch (e) { console.error(e); res.status(e.message && /déjà en cours/.test(e.message) ? 409 : 500).json({ error: e.message || String(e) }); }
 });
 
@@ -301,6 +303,40 @@ app.get('/origami/lecture', async (req, res) => {
     res.json(await origamiGet(path, params, c.id));
   } catch (e) { console.error(e); res.status(e.status || 500).json({ error: e.message || String(e) }); }
 });
+/* synchronisation Orpi depuis l'API Origami ; dryRun : calcule sans rien enregistrer */
+async function syncOrigami(by = 'synchronisation automatique', { dryRun = false } = {}) {
+  const prefix = OG_PREFIX;
+  if (!OG_ON()) throw new Error('API Origami non configurée (variables ORIGAMI_* dans Railway).');
+  if (running.has(prefix)) throw new Error('Une synchronisation est déjà en cours.');
+  running.add(prefix);
+  try {
+    const t0 = Date.now(), ctx = (await origamiContext()).id;
+    const base = await readBase(prefix); if (!base || !base.origami) throw new Error('Données de base Orpi introuvables (orpi_base, champ « origami »).');
+    const prevMeta = await readJson(prefix, 'datasets/commandes');
+    const prevProducts = prevMeta ? prevMeta.products : base.products.map(p => [p[0], p[1], p[2]]);
+    const shop = await fetchOrigami(origamiGet, ctx, { pidmap: base.origami.pidmap });
+    const ds = buildOrigamiDataset(shop.orders, { og: base.origami, products: shop.products, categories: shop.categories, prevProducts, knownAgencies: new Set(base.orders.map(o => o.b)) });
+    if (!ds.orders.length) throw new Error('Aucune commande retenue depuis l\'API Origami : rien n\'a été modifié.');
+    const today = new Date().toISOString().slice(0, 10), last = ds.orders.reduce((m, o) => o[1] > m ? o[1] : m, '');
+    const prevCount = prevMeta ? prevMeta.count : base.orders.length;
+    const summary = { ok: true, prefix, source: 'origami', count: ds.orders.length, previous: prevCount, delta: ds.orders.length - prevCount, last,
+      apiOrders: shop.orders.length, skipped: ds.skipped, missingProducts: shop.missingProducts, seconds: Math.round((Date.now() - t0) / 1000),
+      unknownProducts: ds.unknownProducts.slice(0, 30), unknownCount: ds.unknownProducts.length, unknownAgencies: ds.unknownAgencies.slice(0, 30) };
+    if (dryRun) {
+      const month = m => { const os = ds.orders.filter(o => o[1].startsWith(m)); return { commandes: os.length, caProduitsHT: Math.round(os.reduce((s, o) => s + o[2], 0) * 100) / 100, caEncaisseHT: Math.round(os.reduce((s, o) => s + o[2] - o[4] + o[11], 0) * 100) / 100 }; };
+      const cut = base.orders.reduce((m, o) => o.d > m ? o.d : m, '');
+      return { ...summary, dryRun: true, octobre2026: month('2026-10'), septembre2026: month('2026-09'),
+        jusquAuDernierImport: { date: cut, api: ds.orders.filter(o => o[1] <= cut).length, outil: base.orders.length } };
+    }
+    await backupOrders(prefix, by);
+    await saveOrders(prefix, { file: 'Origami (synchronisation du ' + today + ')', date: today, orders: ds.orders, products: ds.products }, by);
+    return summary;
+  } finally { running.delete(prefix); }
+}
+app.get('/origami/test', async (req, res) => {
+  try { await requireEditor(req); res.json(await syncOrigami('test', { dryRun: true })); }
+  catch (e) { console.error(e); res.status(e.status || 500).json({ error: e.message || String(e) }); }
+});
 app.get('/origami/apercu', async (req, res) => {
   try { await requireEditor(req); res.json(await origamiApercu()); }
   catch (e) { console.error(e); res.status(e.status || 500).json({ error: e.message || String(e) }); }
@@ -311,7 +347,10 @@ if (once) { (async () => { for (const c of CLIENTS) { try { console.log(JSON.str
 else {
   // CRON vaut pour les réseaux sans planification propre ; WC_<PREFIXE>_CRON (ex. hebdomadaire) pour les autres
   const shared = CLIENTS.filter(c => !ownCron(c));
-  if (env('CRON', '') && shared.length) cron.schedule(env('CRON'), async () => { for (const c of shared) { try { console.log('cron', JSON.stringify(await syncClient(c))); } catch (e) { console.error('cron', c, e.message); } } });
+  if (env('CRON', '') && (shared.length || OG_ON())) cron.schedule(env('CRON'), async () => {
+    for (const c of shared) { try { console.log('cron', JSON.stringify(await syncClient(c))); } catch (e) { console.error('cron', c, e.message); } }
+    if (OG_ON()) { try { console.log('cron', OG_PREFIX, JSON.stringify(await syncOrigami())); } catch (e) { console.error('cron', OG_PREFIX, e.message); } }
+  });
   for (const c of CLIENTS.filter(ownCron)) cron.schedule(ownCron(c), async () => { try { console.log('cron', c, JSON.stringify(await syncClient(c))); } catch (e) { console.error('cron', c, e.message); } });
   app.listen(+env('PORT', 3000), () => console.log('smartshop-sync-woocommerce prêt, réseaux :', CLIENTS.join(', ')));
 }
