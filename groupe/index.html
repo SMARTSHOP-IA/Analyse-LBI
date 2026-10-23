@@ -101,6 +101,19 @@ td.c b{font-weight:900}
 svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
 svg.chart .grid{stroke:var(--line)}
 svg.chart .ln{fill:none;stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+select:disabled{opacity:.45;cursor:not-allowed}
+#ch{position:relative}
+svg.chart .hz{fill:transparent;cursor:crosshair}
+svg.chart .vline{stroke:var(--line-strong);stroke-width:1.5;stroke-dasharray:4 4;opacity:0}
+svg.chart circle.pt{transition:r .12s}
+.ch-tip{position:absolute;z-index:5;pointer-events:none;background:var(--surface-2);color:var(--ink);border-radius:14px;box-shadow:var(--raise);padding:12px 14px;font-size:13px;min-width:210px;max-width:300px}
+.ch-tip[hidden]{display:none}
+.ch-tip b.t{display:block;font-size:13px;margin-bottom:8px}
+.ch-tip .r{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:baseline;padding:3px 0}
+.ch-tip .r i{width:10px;height:10px;border-radius:50%;display:inline-block;transform:translateY(1px)}
+.ch-tip .r strong{font-weight:900;white-space:nowrap}
+.ch-tip .r small{grid-column:2/4;color:var(--muted);font-size:12px;margin-top:-2px}
+.ch-tip .tot{border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-weight:800}
 .legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:10px;font-size:13px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .legend i{width:14px;height:4px;border-radius:2px;display:inline-block}
@@ -129,6 +142,8 @@ a.lnk:hover{text-decoration:underline}
     <div class="tools">
       <a class="back-btn" id="backBtn" href="../"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Retour à l'étude des commandes</span></a>
       <select id="fYear" aria-label="Année"></select>
+      <select id="fMonth" aria-label="Mois" disabled></select>
+      <select id="fWeek" aria-label="Semaine" disabled></select>
       <div class="period-sign" id="periodSign"></div>
       <label class="theme-sw" title="Mode sombre"><input type="checkbox" id="themeSw" aria-label="Mode sombre"><span class="tr"><span class="kn"></span><span class="lbl"></span></span></label>
     </div>
@@ -162,7 +177,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const fd=d=>d?d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4):'–';
 const COL=['#1D9DD9','#E50C7E','#E3B505','#2E9E6B','#7A4FBF','#F07C2A','#5C8FA8'];
 const addMonths=(ym,n)=>{let y=+ym.slice(0,4),m=+ym.slice(5,7)+n;while(m>12){m-=12;y++}while(m<1){m+=12;y--}return y+'-'+String(m).padStart(2,'0')};
-const S={year:'all',metric:'cmd'};let DATA=[];
+const S={year:'all',month:'all',week:'all',metric:'cmd'};let DATA=[];
 /* --- thème --- */
 (function(){const sw=document.getElementById('themeSw');let saved=null;try{saved=localStorage.getItem('ss-theme')}catch(e){}
   const apply=(t,save)=>{document.documentElement.dataset.theme=t;sw.checked=t==='dark';if(save){try{localStorage.setItem('ss-theme',t)}catch(e){}}if(DATA.length)render()};
@@ -193,22 +208,63 @@ function kpis(c,ords){
     topCat:top?top[0]+' ('+pct(top[1]/ords.length)+')':'–',penN:new Set(ords.filter(o=>o.m).map(o=>o.a)).size,comm:ords.reduce((s,o)=>s+(o.cm!=null?o.cm:(c.commBase==='brut'?o.t:Math.max(0,o.t-(o.r||0)))*commRateOf(c,o)),0),ship};
 }
 const LAST=()=>DATA.reduce((m,c)=>c.last>m?c.last:m,'');
-function filt(c){return S.year==='all'?c.orders:c.orders.filter(o=>o.y==S.year)}
+/* ---------- période : année, mois, semaine (semaines ISO, du lundi au dimanche) ---------- */
+const MOISL=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const JOURS=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
+const iso=d=>d.toISOString().slice(0,10);
+const utc=s=>new Date(s+'T00:00:00Z');
+const addDays=(s,n)=>iso(new Date(utc(s).getTime()+n*864e5));
+const lastDay=(y,m)=>new Date(Date.UTC(y,m,0)).getUTCDate();
+function weeksOf(y,m){/* semaines ISO de l'année y (et qui touchent le mois m, si choisi) */
+  const j4=utc(y+'-01-04'),mon=iso(new Date(j4.getTime()-((j4.getUTCDay()+6)%7)*864e5));
+  const out=[];for(let n=1,f=mon;n<=53;n++,f=addDays(f,7)){
+    const th=addDays(f,3);if(+th.slice(0,4)!==y)break;const t=addDays(f,6);
+    if(m!=='all'){const ms=y+'-'+String(m).padStart(2,'0')+'-01',me=y+'-'+String(m).padStart(2,'0')+'-'+lastDay(y,+m);if(t<ms||f>me)continue}
+    out.push({n,from:f,to:t})}
+  return out}
+const dShort=s=>(+s.slice(8,10))+' '+MOIS[+s.slice(5,7)-1];
+const weekLbl=w=>'Semaine '+w.n+' ('+dShort(w.from)+' → '+dShort(w.to)+')';
+function curWeek(){return S.week==='all'?null:weeksOf(+S.year,'all').find(w=>w.n===+S.week)||null}
+function range(){/* [début, fin] au format AAAA-MM-JJ, ou null pour toute la période */
+  if(S.year==='all')return null;const y=+S.year,w=curWeek();
+  if(w)return [w.from,w.to];
+  if(S.month!=='all'){const m=String(S.month).padStart(2,'0');return [y+'-'+m+'-01',y+'-'+m+'-'+lastDay(y,+S.month)]}
+  return [y+'-01-01',y+'-12-31']}
+function periodLbl(){if(S.year==='all')return 'Toute la période';const w=curWeek();
+  if(w)return 'Semaine '+w.n+' · '+dShort(w.from)+' → '+dShort(w.to)+' '+w.to.slice(0,4);if(S.month!=='all')return MOISL[+S.month-1].replace(/^./,c=>c.toUpperCase())+' '+S.year;return 'Année '+S.year}
+function filt(c){const r=range();if(!r)return c.orders;return c.orders.filter(o=>{const d=o.d.slice(0,10);return d>=r[0]&&d<=r[1]})}
 function r12(c,back){const L=LAST();const l1=new Date(new Date(L.slice(0,10)).getTime()-365*864e5*(back?2:1)).toISOString().slice(0,10),l2=back?new Date(new Date(L.slice(0,10)).getTime()-365*864e5).toISOString().slice(0,10):L;return c.orders.filter(o=>o.d>l1&&o.d<=l2)}
 function dl(a,b,inv){if(!b)return '';const d=(a-b)/b*100;const good=inv?d<0:d>0;return `<small class="${Math.abs(d)<.05?'':good?'up':'down'}">${d>0?'+':''}${nf1.format(d)} % vs 12 mois précédents</small>`}
-function lineChart(el,keys,series,fmt){
+function keyLbl(k,long){/* mois « AAAA-MM » ou jour « AAAA-MM-JJ » */
+  if(k.length===7)return long?MOISL[+k.slice(5,7)-1].replace(/^./,c=>c.toUpperCase())+' '+k.slice(0,4):MOIS[+k.slice(5,7)-1]+' '+k.slice(2,4);
+  return long?JOURS[utc(k).getUTCDay()]+' '+dShort(k)+' '+k.slice(0,4):dShort(k)}
+function lineChart(el,keys,series,fmt,tip,whole){
   const w=Math.max(300,el.clientWidth||700),h=280,pl=54,pr=12,pt=12,pb=30,iw=w-pl-pr,ih=h-pt-pb;
-  const mx=Math.max(1,...series.flatMap(s=>s.vals));const nice=(()=>{const p=Math.pow(10,Math.floor(Math.log10(mx)));const n=mx/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p})();
-  const X=i=>pl+iw*(keys.length>1?i/(keys.length-1):.5),Y=v=>pt+ih-ih*v/nice,step=Math.ceil(keys.length/Math.max(1,Math.floor(iw/52)));
-  let s=`<svg class="chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img">`;
-  for(let k=0;k<=4;k++){const y=pt+ih-ih*k/4;s+=`<line class="grid" x1="${pl}" x2="${w-pr}" y1="${y}" y2="${y}"/><text x="${pl-6}" y="${y+4}" text-anchor="end">${fmt(nice*k/4)}</text>`}
-  keys.forEach((k,i)=>{if(i%step===0)s+=`<text x="${X(i)}" y="${h-10}" text-anchor="middle">${MOIS[+k.slice(5,7)-1]} ${k.slice(2,4)}</text>`});
-  series.forEach(se=>{s+=`<path class="ln" stroke="${se.col}" d="${se.vals.map((v,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)).join('')}"/>`;se.vals.forEach((v,i)=>{s+=`<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3" fill="${se.col}"><title>${esc(se.l)} · ${MOIS[+keys[i].slice(5,7)-1]} ${keys[i].slice(0,4)} : ${esc(fmt(v))}</title></circle>`})});
-  el.innerHTML=s+'</svg>';
+  const mx=Math.max(1,...series.flatMap(s=>s.vals));const nice=(()=>{const p=Math.pow(10,Math.floor(Math.log10(mx)));const n=mx/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p})(),top=whole?Math.max(4,Math.ceil(nice/4)*4):nice;/* nombres de commandes : graduations entières */
+  const X=i=>pl+iw*(keys.length>1?i/(keys.length-1):.5),Y=v=>pt+ih-ih*v/top,step=Math.ceil(keys.length/Math.max(1,Math.floor(iw/52)));
+  let s=`<svg class="chart" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Graphique : survolez un point pour voir le nombre de commandes">`;
+  for(let k=0;k<=4;k++){const y=pt+ih-ih*k/4;s+=`<line class="grid" x1="${pl}" x2="${w-pr}" y1="${y}" y2="${y}"/><text x="${pl-6}" y="${y+4}" text-anchor="end">${fmt(top*k/4)}</text>`}
+  keys.forEach((k,i)=>{if(i%step===0)s+=`<text x="${X(i)}" y="${h-10}" text-anchor="middle">${keyLbl(k)}</text>`});
+  s+=`<line class="vline" x1="0" x2="0" y1="${pt}" y2="${pt+ih}"/>`;
+  series.forEach((se,j)=>{s+=`<path class="ln" stroke="${se.col}" d="${se.vals.map((v,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)).join('')}"/>`;
+    se.vals.forEach((v,i)=>{s+=`<circle class="pt" data-i="${i}" cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${keys.length>40?2:3}" fill="${se.col}"/>`})});
+  const bw=keys.length>1?iw/(keys.length-1):iw;
+  keys.forEach((k,i)=>{s+=`<rect class="hz" data-i="${i}" x="${(X(i)-bw/2).toFixed(1)}" y="${pt}" width="${bw.toFixed(1)}" height="${ih}"/>`});
+  el.innerHTML=s+'</svg><div class="ch-tip" hidden role="status"></div>';
+  if(!tip)return;
+  const svg=el.querySelector('svg'),tp=el.querySelector('.ch-tip'),vl=svg.querySelector('.vline');let cur=-1;
+  const hide=()=>{tp.hidden=true;vl.style.opacity=0;svg.querySelectorAll('circle.pt').forEach(c=>c.setAttribute('r',keys.length>40?2:3));cur=-1};
+  const show=i=>{if(i===cur)return;cur=i;
+    svg.querySelectorAll('circle.pt').forEach(c=>c.setAttribute('r',+c.dataset.i===i?6:(keys.length>40?2:3)));
+    vl.setAttribute('x1',X(i));vl.setAttribute('x2',X(i));vl.style.opacity=1;
+    tp.innerHTML=tip(i);tp.hidden=false;
+    const tw=tp.offsetWidth,x=X(i)*el.clientWidth/w;tp.style.left=Math.max(0,Math.min(el.clientWidth-tw,x+14>el.clientWidth-tw?x-tw-14:x+14))+'px';tp.style.top='8px'};
+  svg.querySelectorAll('rect.hz').forEach(r=>{r.addEventListener('pointerenter',()=>show(+r.dataset.i));r.addEventListener('pointerdown',()=>show(+r.dataset.i))});
+  svg.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')hide()});
 }
 function render(){
   const app=document.getElementById('app'),L=LAST();
-  document.getElementById('periodSign').textContent=(S.year==='all'?'Toute la période':'Année '+S.year)+' · '+DATA.length+' réseau'+(DATA.length>1?'x':'');
+  document.getElementById('periodSign').textContent=periodLbl()+' · '+DATA.length+' réseau'+(DATA.length>1?'x':'');
   const rows=DATA.map(c=>({c,K:kpis(c,filt(c)),K12:kpis(c,r12(c)),K24:kpis(c,r12(c,true))}));
   const tot=k=>rows.reduce((s,r)=>s+(r.K?r.K[k]:0),0),tot12=k=>rows.reduce((s,r)=>s+(r.K12?r.K12[k]:0),0),tot24=k=>rows.reduce((s,r)=>s+(r.K24?r.K24[k]:0),0);
   const anyComm=rows.some(r=>r.c.commission>0||(r.K&&r.K.comm>0)),anyShip=rows.some(r=>r.K&&r.K.ship>0);
@@ -231,10 +287,20 @@ function render(){
     <div class="box"><h3>Commandes par agence cliente</h3><div id="perAg"></div><p class="note">Nombre moyen de commandes par agence sur la période : mesure la fidélité des agences de chaque réseau.</p></div>
   </div>`;
   const draw=()=>{
-    const keys=[];const end=L.slice(0,7);let k=S.year==='all'?addMonths(end,-23):S.year+'-01';const stop=S.year==='all'?end:S.year+'-12';while(k<=stop){keys.push(k);k=addMonths(k,1)}
-    const series=DATA.map((c,i)=>{const m=new Map(keys.map(k=>[k,0]));c.orders.forEach(o=>{if(m.has(o.ym))m.set(o.ym,m.get(o.ym)+(S.metric==='cmd'?1:o.t))});return {l:c.name,col:COL[i%COL.length],vals:[...m.values()]}});
-    document.getElementById('chT').textContent=(S.metric==='cmd'?'Commandes':'CA HT')+' par mois et par réseau'+(S.year==='all'?' (24 derniers mois)':'');
-    lineChart(document.getElementById('ch'),keys,series,S.metric==='cmd'?v=>nf.format(Math.round(v)):v=>nf.format(Math.round(v/1000))+' k€');
+    /* granularité : par mois (toute la période, une année), par jour (un mois, une semaine) */
+    const keys=[],r=range(),daily=!!(r&&(S.month!=='all'||S.week!=='all'));
+    if(daily){for(let d=r[0];d<=r[1];d=addDays(d,1))keys.push(d)}
+    else{const end=L.slice(0,7);let k=S.year==='all'?addMonths(end,-23):S.year+'-01';const stop=S.year==='all'?end:S.year+'-12';while(k<=stop){keys.push(k);k=addMonths(k,1)}}
+    const kOf=o=>daily?o.d.slice(0,10):o.ym;
+    const series=DATA.map((c,i)=>{const cm=new Map(keys.map(k=>[k,0])),ca=new Map(keys.map(k=>[k,0]));
+      c.orders.forEach(o=>{const k=kOf(o);if(cm.has(k)){cm.set(k,cm.get(k)+1);ca.set(k,ca.get(k)+o.t)}});
+      const cmd=[...cm.values()],caV=[...ca.values()];return {l:c.name,col:COL[i%COL.length],cmd,ca:caV,vals:S.metric==='cmd'?cmd:caV}});
+    document.getElementById('chT').textContent=(S.metric==='cmd'?'Commandes':'CA HT')+(daily?' par jour':' par mois')+' et par réseau'+(S.year==='all'?' (24 derniers mois)':' · '+periodLbl());
+    const plural=n=>nf.format(n)+' commande'+(n>1?'s':'');
+    const tip=i=>{const tc=series.reduce((t,se)=>t+se.cmd[i],0),tca=series.reduce((t,se)=>t+se.ca[i],0);
+      return `<b class="t">${esc(keyLbl(keys[i],true))}</b>`+series.map(se=>`<div class="r"><i style="background:${se.col}"></i><span>${esc(se.l)}</span><strong>${plural(se.cmd[i])}</strong><small>${eur.format(se.ca[i])} HT</small></div>`).join('')
+        +(series.length>1?`<div class="r tot"><span></span><span>Total</span><strong>${plural(tc)}</strong><small>${eur.format(tca)} HT</small></div>`:'')};
+    lineChart(document.getElementById('ch'),keys,series,S.metric==='cmd'?v=>nf.format(Math.round(v)):v=>nf.format(Math.round(v/1000))+' k€',tip,S.metric==='cmd');
     document.getElementById('chL').innerHTML=series.map(s=>`<span><i style="background:${s.col}"></i>${esc(s.l)}</span>`).join('');
     app.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===S.metric));
     const bars=(id,items,fmt)=>{const mx=Math.max(1,...items.map(x=>x.v));document.getElementById(id).innerHTML=items.map((x,i)=>`<div style="display:grid;grid-template-columns:140px 1fr 90px;gap:12px;align-items:center;padding:7px 0"><b>${esc(x.l)}</b><div style="height:10px;border-radius:5px;background:var(--paper);box-shadow:var(--inset-sm);overflow:hidden"><i style="display:block;height:100%;width:${(x.v/mx*100).toFixed(1)}%;background:${COL[i%COL.length]}"></i></div><span style="text-align:right;font-weight:800">${fmt(x.v)}</span></div>`).join('')};
@@ -247,7 +313,18 @@ function render(){
 function start(data){
   DATA=data.filter(c=>c.orders.length);
   const years=[...new Set(DATA.flatMap(c=>c.orders.map(o=>o.y)))].sort();
-  const fy=document.getElementById('fYear');fy.innerHTML='<option value="all">Toutes les années</option>'+years.map(y=>`<option>${y}</option>`).join('');fy.onchange=()=>{S.year=fy.value;render()};
+  const fy=document.getElementById('fYear'),fm=document.getElementById('fMonth'),fw=document.getElementById('fWeek');
+  fy.innerHTML='<option value="all">Toutes les années</option>'+years.map(y=>`<option>${y}</option>`).join('');
+  const fillMonths=()=>{fm.disabled=S.year==='all';
+    const ms=S.year==='all'?[]:[...new Set(DATA.flatMap(c=>c.orders.filter(o=>o.y==S.year).map(o=>+o.ym.slice(5,7))))].sort((a,b)=>a-b);
+    fm.innerHTML='<option value="all">Tous les mois</option>'+ms.map(m=>`<option value="${m}">${MOISL[m-1].replace(/^./,c=>c.toUpperCase())}</option>`).join('');fm.value=S.month};
+  const fillWeeks=()=>{fw.disabled=S.year==='all';const ws=S.year==='all'?[]:weeksOf(+S.year,S.month);
+    if(S.week!=='all'&&!ws.some(w=>w.n===+S.week))S.week='all';
+    fw.innerHTML='<option value="all">Toutes les semaines</option>'+ws.map(w=>`<option value="${w.n}">${esc(weekLbl(w))}</option>`).join('');fw.value=S.week};
+  fy.onchange=()=>{S.year=fy.value;S.month='all';S.week='all';fillMonths();fillWeeks();render()};
+  fm.onchange=()=>{S.month=fm.value;S.week='all';fillWeeks();render()};
+  fw.onchange=()=>{S.week=fw.value;render()};
+  fillMonths();fillWeeks();
   document.getElementById('sub').textContent=DATA.map(c=>c.name).join(', ')+' · commandes jusqu\'au '+fd(LAST());
   render();
 }
