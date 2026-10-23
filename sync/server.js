@@ -50,6 +50,20 @@ async function writeJson(prefix, path, obj, by) {
   if (json.length > 1000000) throw new Error('Document trop volumineux : ' + path);
   await docRef(prefix, path).set({ json, by, at: admin.firestore.FieldValue.serverTimestamp() });
 }
+async function writeBase(prefix, obj, by) {
+  const text = JSON.stringify(obj), PART = 800000, n = Math.ceil(text.length / PART);
+  for (let k = 0; k < n; k++) await fs.collection(prefix + '_base').doc('part_' + k).set({ s: text.slice(k * PART, (k + 1) * PART) });
+  await fs.collection(prefix + '_base').doc('meta').set({ parts: n, size: text.length, by, at: admin.firestore.FieldValue.serverTimestamp() });
+}
+/* données de base d'un nouveau client, construites à partir de sa première synchronisation (même structure que preparer_outil.py) */
+function makeBase(ds, catalogueItems, label, today) {
+  const cat = catalogueItems || [], byName = new Map(cat.map((c, k) => [c[0], k])), used = new Set();
+  const products = ds.products.map(p => { const k = byName.has(p[0]) ? byName.get(p[0]) : -1; if (k >= 0) used.add(k); return [p[0], p[1], p[2] || '', k, k >= 0 ? 'certain' : (cat.length ? 'supprime' : 'none')]; });
+  const orders = ds.orders.map(r => ({ n: r[0], d: r[1], t: r[2], ttc: r[3], r: r[4], c: r[5], i: r[6], dp: r[7], cp: r[8], v: r[9], b: r[10], s: r[11] || 0 }));
+  return { orders, products, prodcat: products.map(p => p[3] >= 0 ? cat[p[3]][0] : ''), agencies: [], agnet: [], agkeys: [], agnid: [], rejected: [], network: [],
+    catalogue: cat.map((c, k) => [...c.slice(0, 5), used.has(k) ? 1 : 0]),
+    meta: { commandes: { file: label, date: today, count: orders.length }, annuaire: { file: '', date: '', count: 0 }, catalogue: { file: cat.length ? label : 'aucun', date: cat.length ? today : '', count: cat.length } } };
+}
 async function readBase(prefix) {
   const m = await fs.collection(prefix + '_base').doc('meta').get(); if (!m.exists) return null;
   let s = ''; for (let k = 0; k < m.data().parts; k++) { const p = await fs.collection(prefix + '_base').doc('part_' + k).get(); if (!p.exists) throw new Error('Données de base incomplètes'); s += p.data().s; }
@@ -196,7 +210,7 @@ async function backupOrders(prefix, by) {
 }
 
 const running = new Set();
-async function syncClient(prefix, by = 'synchronisation automatique') {
+async function syncClient(prefix, by = 'synchronisation automatique', { dryRun = false } = {}) {
   if (!CLIENTS.includes(prefix)) throw new Error(`Réseau inconnu : ${prefix}`);
   if (running.has(prefix)) throw new Error('Une synchronisation est déjà en cours.');
   running.add(prefix);
@@ -209,6 +223,16 @@ async function syncClient(prefix, by = 'synchronisation automatique') {
     if (!ds.orders.length) throw new Error('Aucune commande renvoyée par WooCommerce : rien n\'a été modifié.');
     const today = new Date().toISOString().slice(0, 10);
     const prevCount = prevMeta ? prevMeta.count : (base ? base.orders.length : 0);
+    if (dryRun) {
+      const years = {}; ds.orders.forEach(o => { const y = o[1].slice(0, 4); years[y] = years[y] || { commandes: 0, caProduitsHT: 0, port: 0 }; years[y].commandes++; years[y].caProduitsHT = Math.round((years[y].caProduitsHT + o[2]) * 100) / 100; years[y].port = Math.round((years[y].port + (o[11] || 0)) * 100) / 100; });
+      const fams = {}; ds.products.forEach(p => { fams[p[1]] = (fams[p[1]] || 0) + 1; });
+      const ags = {}; ds.orders.forEach(o => { ags[o[10]] = (ags[o[10]] || 0) + 1; });
+      return { ok: true, dryRun: true, prefix, count: ds.orders.length, previous: prevCount, baseExiste: !!base, last: ds.orders.reduce((m, o) => o[1] > m ? o[1] : m, ''), annees: years,
+        gammes: fams, agences: Object.keys(ags).length, topAgences: Object.entries(ags).sort((a, b) => b[1] - a[1]).slice(0, 10),
+        catalogue: shop.catalogue ? { count: shop.catalogue.length, online: shop.catalogue.filter(c => c[3] === 'En ligne').length } : null };
+    }
+    // nouveau client : les données de base sont créées à partir de cette première lecture (pas de fichier à importer)
+    if (!base) await writeBase(prefix, makeBase(ds, shop.catalogue, 'WooCommerce (lecture du ' + today + ')', today), by);
     await backupOrders(prefix, by);
     await saveOrders(prefix, { file: 'WooCommerce (synchronisation du ' + today + ')', date: today, orders: ds.orders, products: ds.products }, by);
     if (shop.catalogue) await writeJson(prefix, 'datasets/catalogue', { file: 'WooCommerce (synchronisation du ' + today + ')', date: today, items: shop.catalogue }, by);
@@ -333,6 +357,10 @@ async function syncOrigami(by = 'synchronisation automatique', { dryRun = false 
     return summary;
   } finally { running.delete(prefix); }
 }
+app.get('/test/:prefix', async (req, res) => {
+  try { await requireEditor(req); res.json(await syncClient(String(req.params.prefix || '').toLowerCase(), 'test', { dryRun: true })); }
+  catch (e) { console.error(e); res.status(e.status || 500).json({ error: e.message || String(e) }); }
+});
 app.get('/origami/test', async (req, res) => {
   try { await requireEditor(req); res.json(await syncOrigami('test', { dryRun: true })); }
   catch (e) { console.error(e); res.status(e.status || 500).json({ error: e.message || String(e) }); }

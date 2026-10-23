@@ -59,6 +59,7 @@ Les produits supprimés de la boutique gardent la gamme fixée dans l'outil.
 | Interkab | `https://leshop.ma-boite-immo.com` | `2023-10-01` | `completed,processing` | (défaut) |
 | CAFPI | `https://mygoodies.cafpi.fr` | `2025-04-01` | `completed,processing` | `email` |
 | Mon Assurance Facile | `https://smartshop.monassurancefacile.com` | `2020-01-01` | `completed,processing` | `livraison` (+ catalogue) |
+| Soliha | `https://solihashop.soliha.fr` | `2024-01-01` | `completed,processing` | (défaut : association SOLIHA de facturation) + catalogue |
 
 Variables de Mon Assurance Facile (préfixe `maf`, à ajouter dans `CLIENTS`) :
 
@@ -75,6 +76,16 @@ WC_MAF_CATALOGUE=1
 WC_MAF_FAMILIES={"GOODIES":"Goodies","PRINT":"Print","PLV":"PLV","Destockage":"Déstockage","Bibliothèque de prospection":"Bibliothèque de prospection"}
 WC_MAF_REGIONS={"GO":"Grand-Ouest","GP":"Grand-Paris","HDF":"Hauts-de-France","SE":"Sud-Est","SO":"Sud-Ouest","SIEGE":"Siège"}
 ```
+
+Variables de Soliha (préfixe `soliha`, dans `CLIENTS`) : `WC_SOLIHA_URL`, `WC_SOLIHA_KEY`, `WC_SOLIHA_SECRET`,
+`WC_SOLIHA_SINCE=2024-01-01`, `WC_SOLIHA_STATUSES=completed,processing`, `WC_SOLIHA_CATALOGUE=1` et
+`WC_SOLIHA_FAMILIES={"GOODIES":"Goodies","PAPETERIE":"Papeterie","SIGNALETIQUE":"Signalétique","TEXTILE":"Textile","PRODUITS EXPRESS":"Produits Express","NOUVEAUTES":"","PRODUITS RSE":"","CREATIONS LE D":""}`
+(les catégories thématiques, à valeur vide, sont ignorées pour la gamme).
+
+**Nouveau client** : à sa première synchronisation, s'il n'a pas encore de données de base (`<prefixe>_base`), le service
+les crée lui-même à partir de la boutique : aucun fichier `donnees-initiales.json` à importer. Il reste à ajouter le client
+dans `SS_CLIENTS` (index.html) et `CLIENTS` (groupe/index.html), et ses règles Firestore. La route `GET /test/<prefixe>`
+(compte editor) simule une synchronisation sans rien enregistrer.
 
 ## Ce que fait une synchronisation
 

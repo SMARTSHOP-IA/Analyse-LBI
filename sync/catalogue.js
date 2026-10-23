@@ -4,7 +4,8 @@
      WC_<PREFIXE>_CATALOGUE=1       les produits de la boutique (publiés ET désactivés) deviennent le catalogue de l'outil ;
                                     les commandes prennent le nom actuel du produit (même produit = même ligne, même s'il a
                                     été renommé), et les produits en double (même nom) sont regroupés.
-     WC_<PREFIXE>_FAMILIES          JSON {"début de catégorie": "Famille"}, ex. {"GOODIES":"Goodies","PRINT":"Print"}
+     WC_<PREFIXE>_FAMILIES          JSON {"début de catégorie": "Famille"}, ex. {"GOODIES":"Goodies","PRINT":"Print"} ;
+                                    une famille vide ("NOUVEAUTES":"") fait ignorer cette catégorie (catégories thématiques)
      WC_<PREFIXE>_REGIONS           JSON {"code en fin de catégorie": "Région"}, ex. {"GO":"Grand-Ouest","HDF":"Hauts-de-France"}
      WC_<PREFIXE>_AGENCY=livraison  une agence = une personne, d'après le nom de LIVRAISON (prénom + nom) ;
      WC_<PREFIXE>_GENERIC           mots qui signalent un nom générique (ex. "FACILE,MASF") : ces commandes sont regroupées
@@ -31,7 +32,8 @@ export function categoryInfo(product, catById, cfg) {
     while (c && guard++ < 10) { chain.unshift(decode(c.name)); c = c.parent ? catById.get(c.parent) : null; }
     const top = chain[0] || decode(c0.name);
     let fam = null;
-    if (famKeys.length) { const t = nz(top); const hit = famKeys.find(([k]) => t === k || t.startsWith(k + ' ') || t.startsWith(k)); fam = hit ? hit[1] : null; }
+    if (famKeys.length) { const t = nz(top); const hit = famKeys.find(([k]) => t === k || t.startsWith(k + ' ') || t.startsWith(k)); fam = hit ? hit[1] : null;
+      if (hit && !hit[1]) continue; }  // catégorie thématique ignorée
     if (!fam) fam = titleCase(top);
     famSet.set(fam, (famSet.get(fam) || 0) + 1);
     for (const n of chain) { const toks = nz(n).split(' '); const last = toks[toks.length - 1]; if (toks.length > 1 && regKeys.has(last)) regSet.add(regKeys.get(last)); }
