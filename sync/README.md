@@ -100,7 +100,7 @@ FIREBASE_SERVICE_ACCOUNT='…' CLIENTS=interkab WC_INTERKAB_URL=… WC_INTERKAB_
 ```
 
 
-## API Origami (Orpi) : première étape
+## API Origami (Orpi) : synchronisation automatique
 
 Orpi passe ses commandes sur la marketplace Origami, et non sur WooCommerce. Le service sait se connecter à l'API
 Origami (OAuth, documentation : https://api-doc.origami-marketplace.com) pour préparer la synchronisation automatique.
@@ -115,6 +115,13 @@ Variables à ajouter dans Railway, **jamais dans ce dépôt** :
 | `ORIGAMI_USERNAME` | e-mail du compte API |
 | `ORIGAMI_PASSWORD` | mot de passe du compte API |
 
-La route `GET /origami/apercu` (compte editor connecté, comme `/sync`) renvoie le compte API et les deux dernières
-commandes avec leurs lignes, statut, adresses et remboursements : elle sert à vérifier les droits du compte et le format
-réel des données avant d'écrire la synchronisation complète d'Orpi.
+Chaque nuit (variable `CRON`), le service lit toutes les commandes Orpi par l'API (en-tête `context` = groupe vendeur
+SMARTCLIC, détecté automatiquement ou fixé par `ORIGAMI_CONTEXT`) et les enregistre comme un import, avec les règles de
+l'import des exports Origami (`sync/origami.js`) : statuts retenus, agences rapprochées par adresse de livraison, noms de
+produits et catégories fusionnées (configuration `origami` des données de base Orpi), commission réelle, codes promo.
+Les commandes remboursées en totalité sont écartées, même si leur statut est resté « Livrée ». Les commandes « En
+attente validation vendeur » n'entrent qu'une fois validées.
+
+Routes (compte editor connecté) : `POST /sync/orpi` (synchronisation immédiate), `GET /origami/test` (simulation sans
+enregistrement, avec les chiffres d'octobre et de septembre), `GET /origami/apercu` et `GET /origami/lecture?path=/v1/…`
+(exploration de l'API en lecture seule).
