@@ -58,7 +58,7 @@ Les produits supprimés de la boutique gardent la gamme fixée dans l'outil.
 |---|---|---|---|---|
 | Interkab | `https://leshop.ma-boite-immo.com` | `2023-10-01` | `completed,processing` | (défaut) |
 | CAFPI | `https://mygoodies.cafpi.fr` | `2025-04-01` | `completed,processing` | `email` |
-| Mon Assurance Facile | `https://smartshop.monassurancefacile.com` | `2020-01-01` | `completed,processing` | `livraison` (+ catalogue, hebdomadaire) |
+| Mon Assurance Facile | `https://smartshop.monassurancefacile.com` | `2020-01-01` | `completed,processing` | `livraison` (+ catalogue) |
 
 Variables de Mon Assurance Facile (préfixe `maf`, à ajouter dans `CLIENTS`) :
 
@@ -74,7 +74,6 @@ WC_MAF_GENERIC_LABEL=Ma Santé Facile
 WC_MAF_CATALOGUE=1
 WC_MAF_FAMILIES={"GOODIES":"Goodies","PRINT":"Print","PLV":"PLV","Destockage":"Déstockage","Bibliothèque de prospection":"Bibliothèque de prospection"}
 WC_MAF_REGIONS={"GO":"Grand-Ouest","GP":"Grand-Paris","HDF":"Hauts-de-France","SE":"Sud-Est","SO":"Sud-Ouest","SIEGE":"Siège"}
-WC_MAF_CRON=0 4 * * 1
 ```
 
 ## Ce que fait une synchronisation

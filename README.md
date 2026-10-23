@@ -7,6 +7,9 @@ Le menu déroulant **Client**, en haut de la barre latérale (en haut de l'écra
 L'adresse indique le client affiché (`?client=orpi`), ce qui permet de partager un lien direct ; sans précision, l'outil
 rouvre le dernier client consulté. Le lien « Vue groupe » consolide tous les clients.
 
+Les commandes de chaque client sont synchronisées chaque nuit (Railway, variable `CRON`), sauf Orpi tant que
+la synchronisation Origami n'est pas branchée (import des exports Origami).
+
 Les modules propres à un client s'activent selon ses données : programme IK Solutions (Interkab, si l'annuaire est importé),
 import des exports Origami et commissions réelles (Orpi), statut « Désactivé » des produits du catalogue WooCommerce (MAF).
 
