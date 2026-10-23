@@ -135,10 +135,11 @@ a.lnk:hover{text-decoration:underline}
 <script>
 /* ===== Clients à consolider : un objet par réseau (prefix = préfixe des collections Firebase) ===== */
 const CLIENTS=[
-  {prefix:'interkab',name:'Interkab',url:'https://smartshop-ia.github.io/Analyse-LBI/',commission:0.09,commissionPromo:0.045},
-  {prefix:'cafpi',name:'CAFPI',url:'https://smartshop-ia.github.io/etude-commandes-cafpi/'},
-  {prefix:'maf',name:'Mon Assurance Facile',url:'https://smartshop-ia.github.io/etude-commandes-maf/'}
-  /* exemple pour un nouveau client : {prefix:'orpi',name:'Orpi',url:'https://smartshop-ia.github.io/etude-commandes-orpi/'}
+  {prefix:'interkab',name:'Interkab',url:'../?client=interkab',commission:0.09,commissionPromo:0.045},
+  {prefix:'orpi',name:'Orpi',url:'../?client=orpi'},
+  {prefix:'cafpi',name:'CAFPI',url:'../?client=cafpi'},
+  {prefix:'maf',name:'Mon Assurance Facile',url:'../?client=maf'}
+  /* nouveau client : ajouter une ligne ici ET dans la liste SS_CLIENTS en tête de ../index.html
      commission / commissionPromo : taux par défaut si l'outil du réseau n'en a pas enregistré (commissionPromo = taux si la commande a un code promo) */
 ];
 </script>
@@ -160,8 +161,8 @@ const S={year:'all',metric:'cmd'};let DATA=[];
 /* --- normalisation d'un client --- */
 function normalize(c,base,ds,settings){
   let orders,products;
-  if(ds){products=ds.products;orders=ds.orders.map(r=>({d:r[1],t:r[2],r:r[4],c:r[5],i:r[6],a:String(r[10]||'').trim().toUpperCase()+'|'+(r[8]||''),s:r[11]||0}))}
-  else{products=base.products;orders=base.orders.map(o=>({d:o.d,t:o.t,r:o.r,c:o.c||[],i:o.i,a:'a'+o.a,s:o.s||0,m:!!(base.agnet&&base.agnet[o.a]&&base.agnet[o.a][0]>=0)}))}
+  if(ds){products=ds.products;orders=ds.orders.map(r=>({d:r[1],t:r[2],r:r[4],c:r[5],i:r[6],a:String(r[10]||'').trim().toUpperCase()+'|'+(r[8]||''),s:r[11]||0,cm:r[12]==null?undefined:r[12]}))}
+  else{products=base.products;orders=base.orders.map(o=>({d:o.d,t:o.t,r:o.r,c:o.c||[],i:o.i,a:'a'+o.a,s:o.s||0,cm:o.cm,m:!!(base.agnet&&base.agnet[o.a]&&base.agnet[o.a][0]>=0)}))}
   orders.forEach(o=>{o.y=+o.d.slice(0,4);o.ym=o.d.slice(0,7)});
   orders.sort((a,b)=>a.d<b.d?-1:1);
   const network=base&&base.network?base.network.length:0;
@@ -180,7 +181,7 @@ function kpis(c,ords){
   const top=[...cats].sort((a,b)=>b[1]-a[1])[0];
   const ship=ords.reduce((s,o)=>s+(o.s||0),0);
   return {cmd:ords.length,ca,net:ca-rem,basket:ca/ords.length,ag,prod:new Set(ords.flatMap(o=>o.i.map(x=>x[0]))).size,code:ords.filter(o=>o.c.length).length/ords.length,
-    topCat:top?top[0]+' ('+pct(top[1]/ords.length)+')':'–',penN:new Set(ords.filter(o=>o.m).map(o=>o.a)).size,comm:ords.reduce((s,o)=>s+(c.commBase==='brut'?o.t:Math.max(0,o.t-(o.r||0)))*commRateOf(c,o),0),ship};
+    topCat:top?top[0]+' ('+pct(top[1]/ords.length)+')':'–',penN:new Set(ords.filter(o=>o.m).map(o=>o.a)).size,comm:ords.reduce((s,o)=>s+(o.cm!=null?o.cm:(c.commBase==='brut'?o.t:Math.max(0,o.t-(o.r||0)))*commRateOf(c,o)),0),ship};
 }
 const LAST=()=>DATA.reduce((m,c)=>c.last>m?c.last:m,'');
 function filt(c){return S.year==='all'?c.orders:c.orders.filter(o=>o.y==S.year)}
@@ -201,7 +202,7 @@ function render(){
   document.getElementById('periodSign').textContent=(S.year==='all'?'Toute la période':'Année '+S.year)+' · '+DATA.length+' réseau'+(DATA.length>1?'x':'');
   const rows=DATA.map(c=>({c,K:kpis(c,filt(c)),K12:kpis(c,r12(c)),K24:kpis(c,r12(c,true))}));
   const tot=k=>rows.reduce((s,r)=>s+(r.K?r.K[k]:0),0),tot12=k=>rows.reduce((s,r)=>s+(r.K12?r.K12[k]:0),0),tot24=k=>rows.reduce((s,r)=>s+(r.K24?r.K24[k]:0),0);
-  const anyComm=rows.some(r=>r.c.commission>0),anyShip=rows.some(r=>r.K&&r.K.ship>0);
+  const anyComm=rows.some(r=>r.c.commission>0||(r.K&&r.K.comm>0)),anyShip=rows.some(r=>r.K&&r.K.ship>0);
   app.innerHTML=`
   <div class="kpis">
     <div class="kpi"><b>${nf.format(tot('cmd'))}</b><span>commandes, tous réseaux</span>${S.year==='all'?`<small>12 derniers mois : ${nf.format(tot12('cmd'))}</small>${dl(tot12('cmd'),tot24('cmd'))}`:''}</div>
