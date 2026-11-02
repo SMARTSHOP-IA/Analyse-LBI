@@ -5,7 +5,11 @@
                                     les commandes prennent le nom actuel du produit (même produit = même ligne, même s'il a
                                     été renommé), et les produits en double (même nom) sont regroupés.
      WC_<PREFIXE>_FAMILIES          JSON {"début de catégorie": "Famille"}, ex. {"GOODIES":"Goodies","PRINT":"Print"} ;
-                                    une famille vide ("NOUVEAUTES":"") fait ignorer cette catégorie (catégories thématiques)
+                                    une famille vide ("NOUVEAUTES":"") fait ignorer cette catégorie (catégories thématiques) ;
+                                    une famille « >Libellé » ("PRODUITS SPECIFIQUES":">Animations locales") fait prendre la gamme
+                                    de la sous-catégorie, et « Libellé » devient la sous-gamme du produit
+     WC_<PREFIXE>_STRIP             mentions retirées des noms de produits, séparées par des virgules (ex. "(ADH)") : les fiches
+                                    « Stylos » et « Stylos (ADH) » forment un seul produit
      WC_<PREFIXE>_REGIONS           JSON {"code en fin de catégorie": "Région"}, ex. {"GO":"Grand-Ouest","HDF":"Hauts-de-France"}
      WC_<PREFIXE>_AGENCY=livraison  une agence = une personne, d'après le nom de LIVRAISON (prénom + nom) ;
      WC_<PREFIXE>_GENERIC           mots qui signalent un nom générique (ex. "FACILE,MASF") : ces commandes sont regroupées
@@ -26,29 +30,37 @@ export function categoryInfo(product, catById, cfg) {
   const fams = cfg.families || null, regs = cfg.regions || null;
   const famKeys = fams ? Object.keys(fams).map(k => [nz(k), fams[k]]).sort((a, b) => b[0].length - a[0].length) : [];
   const regKeys = regs ? new Map(Object.keys(regs).map(k => [nz(k), regs[k]])) : new Map();
-  const famSet = new Map(), regSet = new Set();
+  const famSet = new Map(), regSet = new Set(), subSet = new Set();
+  const famHit = name => { const t = nz(name); return famKeys.find(([k]) => t === k || t.startsWith(k + ' ') || t.startsWith(k)); };
   for (const c0 of (product.categories || [])) {
     const chain = []; let c = catById.get(c0.id) || { name: c0.name, parent: 0 }, guard = 0;
     while (c && guard++ < 10) { chain.unshift(decode(c.name)); c = c.parent ? catById.get(c.parent) : null; }
-    const top = chain[0] || decode(c0.name);
+    let top = chain[0] || decode(c0.name);
     let fam = null;
-    if (famKeys.length) { const t = nz(top); const hit = famKeys.find(([k]) => t === k || t.startsWith(k + ' ') || t.startsWith(k)); fam = hit ? hit[1] : null;
+    if (famKeys.length) { let hit = famHit(top);
+      // « >Libellé » : catégorie parente regroupant d'autres gammes (ex. produits réservés aux animations locales) ;
+      // la gamme est celle de la sous-catégorie et le libellé devient la sous-gamme du produit
+      if (hit && String(hit[1]).startsWith('>')) { if (chain.length < 2) continue; if (hit[1].length > 1) subSet.add(hit[1].slice(1)); top = chain[1]; hit = famHit(top); }
+      fam = hit ? hit[1] : null;
       if (hit && !hit[1]) continue; }  // catégorie thématique ignorée
     if (!fam) fam = titleCase(top);
     famSet.set(fam, (famSet.get(fam) || 0) + 1);
     for (const n of chain) { const toks = nz(n).split(' '); const last = toks[toks.length - 1]; if (toks.length > 1 && regKeys.has(last)) regSet.add(regKeys.get(last)); }
   }
   const fam = [...famSet].sort((a, b) => b[1] - a[1])[0];
-  return { fam: fam ? fam[0] : 'Non renseignée', sub: regSet.size === 1 ? [...regSet][0] : regSet.size > 1 ? 'Toutes régions' : '' };
+  return { fam: fam ? fam[0] : 'Non renseignée', sub: regSet.size === 1 ? [...regSet][0] : regSet.size > 1 ? 'Toutes régions' : subSet.size === 1 ? [...subSet][0] : '' };
 }
 
 /* catalogue de l'outil : [nom, libellé, groupe, statut, [[quantité, prix HT]]], un élément par nom de produit */
 export function buildCatalogue(products, categories, orders, cfg) {
   const catById = new Map((categories || []).map(c => [c.id, c]));
   const byId = new Map();
+  // mentions retirées des noms (ex. « (ADH) » : même produit décliné pour les adhérents) : les deux fiches ne font qu'une ligne
+  const strip = (cfg.strip || []).filter(Boolean).map(s => new RegExp('\\s*' + s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'gi'));
+  const shortName = n => strip.reduce((s, re) => s.replace(re, ' '), cleanName(n)).replace(/\s+/g, ' ').trim();
   for (const p of products) {
     const info = categoryInfo(p, catById, cfg);
-    byId.set(p.id, { name: cleanName(p.name) || '(Produit sans nom)', fam: info.fam, sub: info.sub, status: p.status === 'publish' ? 'En ligne' : 'Désactivé', raw: p });
+    byId.set(p.id, { name: shortName(p.name) || '(Produit sans nom)', fam: info.fam, sub: info.sub, status: p.status === 'publish' ? 'En ligne' : 'Désactivé', raw: p });
   }
   // prix observé : quantité la plus commandée et montant HT de la commande la plus récente à cette quantité
   const seen = new Map(), lines = new Map();
@@ -99,6 +111,21 @@ export function livraisonKey(o, cfg) {
     return ['G|' + nz(city), lab + (city ? ' (' + city + ')' : '')];
   }
   return ['P|' + [...toks].sort().join(' '), (titleCase(first) + ' ' + last.toUpperCase()).replace(/\s+/g, ' ').trim()];
+}
+/* mode « animation » (réseau Amanda) : type de commande et regroupement
+   - réglée par virement (cfg.alPayment) : commande d'une animation locale, réglée par le siège → regroupée par nom d'animation locale
+   - sinon : commande d'agence → regroupée par société de facturation (commande, puis compte client, puis nom de la personne)
+   Les deux gardent le nom de l'animation locale de rattachement (champ cfg.alMeta de la commande). */
+export function animationInfo(o, cfg, companies) {
+  const meta = (o.meta_data || []).find(m => m.key === (cfg.alMeta || 'billing_animation_local') || m.key === '_' + (cfg.alMeta || 'billing_animation_local'));
+  const al = decode(meta ? String(meta.value || '') : '').replace(/\s+/g, ' ').trim().toUpperCase();
+  const pay = String(o.payment_method || '').toLowerCase(), isAl = (cfg.alPayment || ['bacs']).includes(pay);
+  if (isAl) return { type: 'al', label: al || '(ANIMATION LOCALE NON RENSEIGNÉE)', al };
+  const bill = o.billing || {};
+  let soc = decode(bill.company || '').replace(/\s+/g, ' ').trim();
+  if (!soc && companies) soc = decode(companies.get(o.customer_id) || '').replace(/\s+/g, ' ').trim();
+  if (!soc) soc = (decode(bill.first_name || '') + ' ' + decode(bill.last_name || '')).replace(/\s+/g, ' ').trim();
+  return { type: 'ag', label: soc.toUpperCase() || '(SANS NOM)', al };
 }
 /* libellé retenu pour une clé : le plus fréquent, puis le plus récent */
 export function pickLabels(keyed, dates) {

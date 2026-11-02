@@ -14,6 +14,13 @@
      WC_<PREFIXE>_AGENCY        regroupement des commandes : "societe" (défaut, société de facturation) ou "email"
                                 (une agence = une personne, libellé « Prénom NOM (Ville) », ex. réseau de courtiers CAFPI)
                                 ou "livraison" (une agence = la personne du nom de livraison, ex. conseillers Mon Assurance Facile)
+                                ou "animation" (réseau Amanda : deux types de commandes ; les commandes réglées par virement sont celles
+                                des animations locales, regroupées par nom d'animation locale ; les autres sont celles des agences,
+                                regroupées par société de facturation, lue sur la commande ou à défaut sur le compte client ;
+                                chaque commande garde le nom de l'animation locale de rattachement)
+     WC_<PREFIXE>_AL_PAYMENT    mode animation : moyens de paiement des commandes d'animation locale (défaut : bacs = virement)
+     WC_<PREFIXE>_AL_META       mode animation : champ de la commande portant l'animation locale (défaut : billing_animation_local)
+     WC_<PREFIXE>_STRIP         mentions retirées des noms de produits (ex. "(ADH)"), mode catalogue
      WC_<PREFIXE>_GENERIC       mode livraison : mots d'un nom générique (ex. "FACILE,MASF"), regroupé par ville de livraison
      WC_<PREFIXE>_GENERIC_LABEL mode livraison : libellé de ces commandes (ex. "Ma Santé Facile" → « Ma Santé Facile (Lille) »)
      WC_<PREFIXE>_CATALOGUE     "1" : les produits WooCommerce (publiés et désactivés) deviennent le catalogue de l'outil
@@ -30,7 +37,7 @@
 import express from 'express';
 import admin from 'firebase-admin';
 import cron from 'node-cron';
-import { buildCatalogue, renameLines, livraisonKey, pickLabels, parseJson } from './catalogue.js';
+import { buildCatalogue, renameLines, livraisonKey, pickLabels, parseJson, animationInfo } from './catalogue.js';
 import { buildOrigamiDataset, fetchOrigami } from './origami.js';
 
 const env = (k, d) => (process.env[k] ?? d);
@@ -59,7 +66,7 @@ async function writeBase(prefix, obj, by) {
 function makeBase(ds, catalogueItems, label, today) {
   const cat = catalogueItems || [], byName = new Map(cat.map((c, k) => [c[0], k])), used = new Set();
   const products = ds.products.map(p => { const k = byName.has(p[0]) ? byName.get(p[0]) : -1; if (k >= 0) used.add(k); return [p[0], p[1], p[2] || '', k, k >= 0 ? 'certain' : (cat.length ? 'supprime' : 'none')]; });
-  const orders = ds.orders.map(r => ({ n: r[0], d: r[1], t: r[2], ttc: r[3], r: r[4], c: r[5], i: r[6], dp: r[7], cp: r[8], v: r[9], b: r[10], s: r[11] || 0 }));
+  const orders = ds.orders.map(r => ({ n: r[0], d: r[1], t: r[2], ttc: r[3], r: r[4], c: r[5], i: r[6], dp: r[7], cp: r[8], v: r[9], b: r[10], s: r[11] || 0, ...(r[13] ? { k: r[13], al: r[14] || '' } : {}) }));
   return { orders, products, prodcat: products.map(p => p[3] >= 0 ? cat[p[3]][0] : ''), agencies: [], agnet: [], agkeys: [], agnid: [], rejected: [], network: [],
     catalogue: cat.map((c, k) => [...c.slice(0, 5), used.has(k) ? 1 : 0]),
     meta: { commandes: { file: label, date: today, count: orders.length }, annuaire: { file: '', date: '', count: 0 }, catalogue: { file: cat.length ? label : 'aucun', date: cat.length ? today : '', count: cat.length } } };
@@ -96,7 +103,9 @@ function shopConfig(prefix) {
   if (!url || !key || !secret) throw new Error(`Configuration WooCommerce manquante pour « ${prefix} » (WC_${P}_URL / KEY / SECRET).`);
   return { url: url.replace(/\/wp-admin\/?$/, '').replace(/\/$/, ''), key, secret, since: env(`WC_${P}_SINCE`, '2023-10-01'), statuses: env(`WC_${P}_STATUSES`, 'completed,processing'), agency: env(`WC_${P}_AGENCY`, 'societe').toLowerCase(),
     catalogue: /^(1|true|oui|yes)$/i.test(env(`WC_${P}_CATALOGUE`, '')), families: parseJson(env(`WC_${P}_FAMILIES`, ''), `WC_${P}_FAMILIES`), regions: parseJson(env(`WC_${P}_REGIONS`, ''), `WC_${P}_REGIONS`),
-    generic: env(`WC_${P}_GENERIC`, '').split(',').map(s => s.trim()).filter(Boolean), genericLabel: env(`WC_${P}_GENERIC_LABEL`, '') };
+    generic: env(`WC_${P}_GENERIC`, '').split(',').map(s => s.trim()).filter(Boolean), genericLabel: env(`WC_${P}_GENERIC_LABEL`, ''),
+    strip: env(`WC_${P}_STRIP`, '').split(',').map(s => s.trim()).filter(Boolean),
+    alPayment: env(`WC_${P}_AL_PAYMENT`, 'bacs').split(',').map(s => s.trim().toLowerCase()).filter(Boolean), alMeta: env(`WC_${P}_AL_META`, 'billing_animation_local') };
 }
 async function wcGetAll(cfg, path, params = {}) {
   const out = []; let page = 1;
@@ -120,13 +129,23 @@ async function fetchShop(cfg) {
   const catById = new Map(cats.map(c => [c.id, c]));
   const catPath = c => { const p = c.parent && catById.get(c.parent); return p ? p.name + '>' + c.name : c.name; };
   const prodCats = new Map(products.map(p => [p.id, (p.categories || []).map(c => catById.get(c.id) ? catPath(catById.get(c.id)) : c.name).join(', ')]));
+  // mode animation : société de facturation des comptes clients (souvent absente de la commande elle-même)
+  let companies = null;
+  if (cfg.agency === 'animation') {
+    companies = new Map();
+    const ids = [...new Set(orders.map(o => o.customer_id).filter(Boolean))];
+    for (let i = 0; i < ids.length; i += 100) {
+      const cs = await wcGetAll(cfg, 'customers', { include: ids.slice(i, i + 100).join(','), role: 'all' });
+      cs.forEach(c => companies.set(c.id, (c.billing && c.billing.company) || ''));
+    }
+  }
   if (cfg.catalogue) {
     // catalogue complet (produits publiés et désactivés) ; les commandes prennent le nom actuel des produits
     const cat = buildCatalogue(products, cats, orders, cfg);
     renameLines(orders, cat.nameOf);
-    return { orders, prodCats: cat.catOf, catalogue: cat.items };
+    return { orders, prodCats: cat.catOf, catalogue: cat.items, companies };
   }
-  return { orders, prodCats };
+  return { orders, prodCats, companies };
 }
 
 /* ---------- transformation au format de l'outil ---------- */
@@ -136,7 +155,7 @@ const courtierLabel = (first, last, city, email) => {
   const c = decode(city).replace(/^\d{4,5}\s*-?\s*/, '').trim();
   return name + (c ? ' (' + titleCase(c) + ')' : '');
 };
-function buildDataset(prefix, { orders, prodCats }, prevProducts, agency = 'societe', cfg = {}) {
+function buildDataset(prefix, { orders, prodCats, companies }, prevProducts, agency = 'societe', cfg = {}) {
   const keyed = [], keyedL = [];
   const prodList = [], pidx = new Map(), prodCatCount = new Map(), out = [];
   // noms déjà connus dans l'outil : on les retrouve même si l'API les écrit un peu différemment (espaces, accents, guillemets)
@@ -160,7 +179,10 @@ function buildDataset(prefix, { orders, prodCats }, prevProducts, agency = 'soci
     }
     const t = r2(items.reduce((s, i) => s + i[2], 0));
     const codes = (o.coupon_lines || []).filter(c => c.code).map(c => [String(c.code).trim().toLowerCase(), r2(c.discount)]);
-    out.push([n, fmtDate(o.date_created), t, r2(totalTTC - refunded), r2(num(o.discount_total) * kr), codes, items, depOf(cp), cp, titleCase(decode(ship.city || bill.city || '').trim()), soc, r2(num(o.shipping_total) * kr)]);
+    const row = [n, fmtDate(o.date_created), t, r2(totalTTC - refunded), r2(num(o.discount_total) * kr), codes, items, depOf(cp), cp, titleCase(decode(ship.city || bill.city || '').trim()), soc, r2(num(o.shipping_total) * kr)];
+    // mode animation : [12] commission (non utilisée), [13] type « al » (animation locale) ou « ag » (agence), [14] animation locale de rattachement
+    if (agency === 'animation') { const x = animationInfo(o, cfg, companies); row[10] = x.label; row.push(null, x.type, x.al); }
+    out.push(row);
     const mail = String(bill.email || '').trim().toLowerCase() || soc;
     keyed.push([mail, courtierLabel(bill.first_name, bill.last_name, ship.city || bill.city, mail)]);
     if (agency === 'livraison') keyedL.push(livraisonKey(o, cfg));
@@ -227,8 +249,9 @@ async function syncClient(prefix, by = 'synchronisation automatique', { dryRun =
       const years = {}; ds.orders.forEach(o => { const y = o[1].slice(0, 4); years[y] = years[y] || { commandes: 0, caProduitsHT: 0, port: 0 }; years[y].commandes++; years[y].caProduitsHT = Math.round((years[y].caProduitsHT + o[2]) * 100) / 100; years[y].port = Math.round((years[y].port + (o[11] || 0)) * 100) / 100; });
       const fams = {}; ds.products.forEach(p => { fams[p[1]] = (fams[p[1]] || 0) + 1; });
       const ags = {}; ds.orders.forEach(o => { ags[o[10]] = (ags[o[10]] || 0) + 1; });
+      const types = {}; ds.orders.forEach(o => { if (o[13]) types[o[13]] = (types[o[13]] || 0) + 1; });
       return { ok: true, dryRun: true, prefix, count: ds.orders.length, previous: prevCount, baseExiste: !!base, last: ds.orders.reduce((m, o) => o[1] > m ? o[1] : m, ''), annees: years,
-        gammes: fams, agences: Object.keys(ags).length, topAgences: Object.entries(ags).sort((a, b) => b[1] - a[1]).slice(0, 10),
+        gammes: fams, agences: Object.keys(ags).length, ...(Object.keys(types).length ? { typesCommandes: types } : {}), topAgences: Object.entries(ags).sort((a, b) => b[1] - a[1]).slice(0, 10),
         catalogue: shop.catalogue ? { count: shop.catalogue.length, online: shop.catalogue.filter(c => c[3] === 'En ligne').length } : null };
     }
     // nouveau client : les données de base sont créées à partir de cette première lecture (pas de fichier à importer)
