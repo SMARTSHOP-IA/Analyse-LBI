@@ -47,12 +47,22 @@ réglage de CAFPI, dont les commandes sont passées par des courtiers et factur�
 compte des accents), libellé « Prénom NOM » le plus fréquent. C'est le réglage de Mon Assurance Facile, dont toutes les
 commandes sont facturées au même nom et livrées aux conseillers. Les noms génériques (mots de `WC_<PREFIXE>_GENERIC`,
 ex. `FACILE,MASF`) sont regroupés par ville de livraison, sous le libellé `WC_<PREFIXE>_GENERIC_LABEL` (« Ma Santé Facile (Lille) »).
+`animation` (réseau Amanda) distingue deux types de commandes : celles réglées par virement (`WC_<PREFIXE>_AL_PAYMENT`,
+défaut `bacs`) sont passées par une **animation locale** et réglées par le siège ; elles sont regroupées par nom d'animation
+locale (champ `WC_<PREFIXE>_AL_META` de la commande, défaut `billing_animation_local`). Les autres sont des commandes
+d'**agence**, regroupées par société de facturation (celle de la commande, sinon celle du compte client). Chaque commande
+garde l'animation locale de rattachement : l'outil affiche les segments « Animations locales » / « Agences », la colonne
+« Animation locale de rattachement » et un filtre qui réunit une animation locale et ses agences.
 
 **Catalogue WooCommerce** (`WC_<PREFIXE>_CATALOGUE=1`, réseaux sans catalogue monday, ex. Mon Assurance Facile) : à chaque
 synchronisation, tous les produits de la boutique, **publiés et désactivés** (brouillons, privés), sont enregistrés comme
 catalogue de l'outil (statut « En ligne » ou « Désactivé ») ; les commandes prennent le nom actuel du produit (un produit
 renommé reste une seule ligne) et les produits de même nom sont regroupés. Gammes : `WC_<PREFIXE>_FAMILIES`, JSON
 {début de la catégorie principale → gamme} ; sous-gamme = région : `WC_<PREFIXE>_REGIONS`, JSON {code en fin de catégorie → région}.
+Une gamme « >Libellé » désigne une catégorie parente qui regroupe d'autres gammes (Amanda : « Produits spécifiques aux
+Animations Locales ») : la gamme est celle de la sous-catégorie et « Libellé » devient la sous-gamme. `WC_<PREFIXE>_STRIP` :
+mentions retirées des noms de produits, séparées par des virgules (Amanda : `(ADH)`, pour que « Stylos » et « Stylos (ADH) »
+forment un seul produit).
 Les produits supprimés de la boutique gardent la gamme fixée dans l'outil.
 | Réseau | URL | SINCE | STATUSES | AGENCY |
 |---|---|---|---|---|
@@ -60,6 +70,7 @@ Les produits supprimés de la boutique gardent la gamme fixée dans l'outil.
 | CAFPI | `https://mygoodies.cafpi.fr` | `2025-04-01` | `completed,processing` | `email` |
 | Mon Assurance Facile | `https://smartshop.monassurancefacile.com` | `2020-01-01` | `completed,processing` | `livraison` (+ catalogue) |
 | Soliha | `https://solihashop.soliha.fr` | `2024-01-01` | `completed,processing` | (défaut : association SOLIHA de facturation) + catalogue |
+| Amanda | `https://amandaimmo.smartshop.fr` | `2025-10-01` | `completed,processing` | `animation` + catalogue |
 
 Variables de Mon Assurance Facile (préfixe `maf`, à ajouter dans `CLIENTS`) :
 
@@ -81,6 +92,20 @@ Variables de Soliha (préfixe `soliha`, dans `CLIENTS`) : `WC_SOLIHA_URL`, `WC_S
 `WC_SOLIHA_SINCE=2024-01-01`, `WC_SOLIHA_STATUSES=completed,processing`, `WC_SOLIHA_CATALOGUE=1` et
 `WC_SOLIHA_FAMILIES={"GOODIES":"Goodies","PAPETERIE":"Papeterie","SIGNALETIQUE":"Signalétique","TEXTILE":"Textile","PRODUITS EXPRESS":"Produits Express","NOUVEAUTES":"","PRODUITS RSE":"","CREATIONS LE D":""}`
 (les catégories thématiques, à valeur vide, sont ignorées pour la gamme).
+
+Variables d'Amanda (préfixe `amanda`, à ajouter dans `CLIENTS`) :
+
+```
+WC_AMANDA_URL=https://amandaimmo.smartshop.fr
+WC_AMANDA_KEY=…            (clé API WooCommerce en lecture)
+WC_AMANDA_SECRET=…
+WC_AMANDA_SINCE=2025-10-01
+WC_AMANDA_STATUSES=completed,processing
+WC_AMANDA_AGENCY=animation
+WC_AMANDA_CATALOGUE=1
+WC_AMANDA_STRIP=(ADH)
+WC_AMANDA_FAMILIES={"GOODIES":"Goodies","PLV":"PLV / Signalétique","BROCHURES":"Papeterie","PRODUITS SPECIFIQUES":">Animations locales"}
+```
 
 **Nouveau client** : à sa première synchronisation, s'il n'a pas encore de données de base (`<prefixe>_base`), le service
 les crée lui-même à partir de la boutique : aucun fichier `donnees-initiales.json` à importer. Il reste à ajouter le client
