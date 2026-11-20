@@ -217,7 +217,7 @@ function kpis(c,ords){
   const ship=ords.reduce((s,o)=>s+(o.s||0),0);
   const enc=ca-rem+ship;
   return {cmd:ords.length,ca,net:ca-rem,enc,basket:enc/ords.length,ag,prod:new Set(ords.flatMap(o=>o.i.map(x=>x[0]))).size,code:ords.filter(o=>o.c.length).length/ords.length,
-    topCat:top?top[0]+' ('+pct(top[1]/ords.length)+')':'–',penN:new Set(ords.filter(o=>o.m).map(o=>o.a)).size,comm:ords.reduce((s,o)=>s+(o.cm!=null?o.cm:(c.commBase==='brut'?o.t:Math.max(0,o.t-(o.r||0)))*commRateOf(c,o)),0),ship};
+    topCat:top?top[0]+' ('+pct(top[1]/ords.length)+')':'–',penN:new Set(ords.filter(o=>o.m).map(o=>o.a)).size,comm:ords.reduce((s,o)=>s+(o.cm!=null?o.cm:(c.commBase==='brut'?o.t:Math.max(0,o.t-(o.r||0)+paid(o)))*commRateOf(c,o)),0),ship};
 }
 const LAST=()=>DATA.reduce((m,c)=>c.last>m?c.last:m,'');
 /* ---------- période : année, mois, semaine (semaines ISO, du lundi au dimanche) ---------- */

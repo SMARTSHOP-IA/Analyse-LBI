@@ -945,7 +945,7 @@ const hasReduced=()=>commPromoRate()!==commRate();
 const commPromoOrder=o=>o.c&&o.c.some(c=>commPromoScope()==='any'||codeType(c[0])==='promo');
 const commRateOf=o=>hasReduced()&&commPromoOrder(o)?commPromoRate():commRate();
 /* base de commission : CA HT produits uniquement (o.t), jamais les frais de port (o.s) */
-const commBase=o=>SETTINGS.commission&&SETTINGS.commission.base==='brut'?o.t:Math.max(0,o.t-(o.r||0));
+const commBase=o=>SETTINGS.commission&&SETTINGS.commission.base==='brut'?o.t:Math.max(0,netOf(o));/* remises facturées au réseau : pas déduites */
 /* Origami : montant de commission réel par commande (o.cm) quand l'export le fournit */
 const HAS_CM=()=>D.orders.some(o=>o.cm!=null);
 const commOne=o=>o.cm!=null?o.cm:commBase(o)*commRateOf(o);
