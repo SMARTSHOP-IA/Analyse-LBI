@@ -207,7 +207,7 @@ function normalize(c,base,ds,settings){
 }
 /* même règle que l'outil : taux réduit si la commande porte un code promo ; « smart points » = fidélité, « sav… » ou numérique = geste commercial */
 const codeType=k=>k==='smart points'?'fid':/^sav|^\d+$/.test(k)?'sav':'promo';
-const commRateOf=(c,o)=>c.commPromo!=null&&(o.c||[]).some(x=>c.commScope==='any'||codeType(x[0])==='promo')?c.commPromo:c.commission;
+const commRateOf=(c,o)=>{const PR=c.paidCodes?new RegExp(c.paidCodes,'i'):null;return c.commPromo!=null&&(o.c||[]).some(x=>!(PR&&PR.test(x[0]))&&(c.commScope==='any'||codeType(x[0])==='promo'))?c.commPromo:c.commission};
 function kpis(c,ords){
   if(!ords.length)return null;
   const PR=c.paidCodes?new RegExp(c.paidCodes,'i'):null,paid=o=>PR?Math.min(o.r||0,(o.c||[]).reduce((s,x)=>s+(PR.test(x[0])?(+x[1]||0):0),0)):0;

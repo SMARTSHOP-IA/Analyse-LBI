@@ -942,7 +942,7 @@ const COMM_PROMO_META=(m=>m&&m.content!==''?+m.content:null)(document.querySelec
 const commPromoRate=()=>{const c=SETTINGS.commission||{};const v=c.promoRate===''?null:c.promoRate!=null?+c.promoRate:COMM_PROMO_META;return v==null||!isFinite(v)?commRate():v};
 const commPromoScope=()=>(SETTINGS.commission&&SETTINGS.commission.promoScope)||'promo';
 const hasReduced=()=>commPromoRate()!==commRate();
-const commPromoOrder=o=>o.c&&o.c.some(c=>commPromoScope()==='any'||codeType(c[0])==='promo');
+const commPromoOrder=o=>o.c&&o.c.some(c=>!(PAID_RE&&PAID_RE.test(c[0]))&&(commPromoScope()==='any'||codeType(c[0])==='promo'));/* code facturé au réseau : taux normal */
 const commRateOf=o=>hasReduced()&&commPromoOrder(o)?commPromoRate():commRate();
 /* base de commission : CA HT produits uniquement (o.t), jamais les frais de port (o.s) */
 const commBase=o=>SETTINGS.commission&&SETTINGS.commission.base==='brut'?o.t:Math.max(0,netOf(o));/* remises facturées au réseau : pas déduites */
